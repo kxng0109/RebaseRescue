@@ -4,7 +4,7 @@
 # Tag 25.0.4_1-jdk-alpine was removed from Docker Hub; 25.0.4_7 is the
 # current patch. Pinning by digest prevents silent tag drift and is the
 # only way to guarantee the exact image we built against.
-FROM eclipse-temurin@sha256:09349d79941fd53bb3d487b393ca118d8853c08c09193f416fe6a8718df9e732 AS builder
+FROM eclipse-temurin@sha256:010ab2b79329b951bf052dbf515843ab345ae4e4f0ef72287d85c9fa54da275f AS builder
 
 WORKDIR /build
 
@@ -37,7 +37,7 @@ RUN java -Djarmode=tools -jar target/rebase-rescue-*.jar extract --layers --dest
 # ============================================
 # Runtime Stage (Temurin 25 JRE, digest-pinned; see builder stage for
 # why the old 25.0.4_1 tag was removed and 25.0.4_7 is current).
-FROM eclipse-temurin@sha256:3137541deb3cac6626b5d9a4a2187bc0d6a34312f858bd2c67dd01e732e6b682
+FROM eclipse-temurin@sha256:010ab2b79329b951bf052dbf515843ab345ae4e4f0ef72287d85c9fa54da275f
 
 LABEL org.opencontainers.image.title="RebaseRescue"
 LABEL org.opencontainers.image.description="Self-hosted AI-powered code audit and PR analysis service"
