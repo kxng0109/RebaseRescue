@@ -595,7 +595,15 @@ class GithubApiClientTest {
         sarifDoc.put("runs", null);
         when(sarifService.toSarif(any())).thenReturn(sarifDoc);
         stubUploadPost(Map.of("id", "sarif-null"));
-        stubPollGet((Map<String, Object>) null);
+        RestClient.RequestHeadersUriSpec getSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec pollSpec = mock(RestClient.ResponseSpec.class);
+        when(restClient.get()).thenReturn(getSpec);
+        when(getSpec.uri(anyString(), any(Object.class), any(Object.class), any(Object.class))).thenReturn(headersSpec);
+        when(headersSpec.header(anyString(), anyString())).thenReturn(headersSpec);
+        when(headersSpec.retrieve()).thenReturn(pollSpec);
+        when(pollSpec.body(any(Class.class))).thenReturn(null);
+        lastPollSpec = pollSpec;
         GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();

@@ -24,6 +24,9 @@
              CVE-2026-65905 and CVE-2026-68525 (auth bypasses). 11.0.25
              fixes all three and is the newest 11.0.x release. -->
         <tomcat.version>11.0.25</tomcat.version>
+        <!-- Empty guard so surefire's late-replacement @{argLine} resolves even
+             when jacoco:prepare-agent has not run (documented composition). -->
+        <argLine />
     </properties>
     <dependencies>
         <dependency>
@@ -197,6 +200,29 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <!-- Resolves ${org.mockito:mockito-core:jar} for static agent attach below. -->
+                        <id>resolve-test-agent-paths</id>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Static Mockito agent attach (documented recipe): kills the
+                         self-attach and dynamic-load warnings at the root instead
+                         of silencing them. Composes with JaCoCo via late replacement. -->
+                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
                 </configuration>
             </plugin>
             <plugin>

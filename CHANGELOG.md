@@ -21,6 +21,7 @@ and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 - Removed dead null-mode fallback in `SecurityConfig`; a null auth mode now fails fast instead of silently downgrading to selfhost.
 - Token plus dependency resilience: BouncyCastle `1.84` to `1.86` (August-September 2026 CVE batch), RSA private keys floored at 2048 bits, installation token evicted plus refreshed with exactly one retry on API 401s, and a single shared `RestClient` per bean instead of a rebuild per call.
 - Memory bounds plus honest gates: diff-cache responses over a configurable character budget are served but not stored, SARIF uploads enforce a byte budget before polling, SARIF polling survives transient failures with interrupt discipline intact, and the temporary GitHub JaCoCo exclusion is removed with per-class gates green again.
+- Quiet-by-construction toolchain: Maven wrapper `3.9.11` to `3.9.16` (drops the Guice plus Sisu JDK warnings at the root) and static Mockito agent attach for surefire (drops the self-attach plus dynamic-load warnings); the remaining CDS bootstrap note has no upstream fix and stays as harmless noise.
 
 ## [1.1.0] - 2026-09-10
 
