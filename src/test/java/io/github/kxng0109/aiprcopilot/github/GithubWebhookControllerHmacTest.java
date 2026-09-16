@@ -71,6 +71,13 @@ class GithubWebhookControllerHmacTest {
     }
 
     @Test
+    void verifySignature_shouldReturnFalseWhenSecretNull() {
+        GithubWebhookController controller = controllerWithSecret(null);
+
+        assertThat(controller.verifySignature("body".getBytes(StandardCharsets.UTF_8), "sha256=abc")).isFalse();
+    }
+
+    @Test
     void verifySignature_shouldBeCaseInsensitiveOnHex() throws Exception {
         String secret = "mysecret";
         byte[] body = "payload".getBytes(StandardCharsets.UTF_8);

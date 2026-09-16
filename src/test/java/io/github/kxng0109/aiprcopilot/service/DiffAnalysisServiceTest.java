@@ -776,6 +776,7 @@ public class DiffAnalysisServiceTest {
 	@Test
 	void analyzeDiff_shouldPutCache_whenEnabledAndMiss() {
 		when(analysisProperties.getCacheMaxSize()).thenReturn(1000);
+		when(analysisProperties.getCacheMaxEntryChars()).thenReturn(100000L);
 		when(analysisCache.getIfPresent(anyString())).thenReturn(null);
 		Prompt mockPrompt = mock(Prompt.class);
 		when(promptBuilderService.buildDiffAnalysisPrompt(any(), any(), any(), any(), any()))
@@ -793,6 +794,33 @@ public class DiffAnalysisServiceTest {
 
 		assertThat(diffAnalysisService.analyzeDiff(request)).isSameAs(mapped);
 		verify(analysisCache).put(anyString(), eq(mapped));
+		verify(analysisMetrics).countCacheMiss("openai");
+	}
+
+	@Test
+	void analyzeDiff_shouldSkipCacheStore_whenEntryExceedsBudget() {
+		when(analysisProperties.getCacheMaxSize()).thenReturn(1000);
+		when(analysisProperties.getCacheMaxEntryChars()).thenReturn(1024L);
+		when(analysisCache.getIfPresent(anyString())).thenReturn(null);
+		Prompt mockPrompt = mock(Prompt.class);
+		when(promptBuilderService.buildDiffAnalysisPrompt(any(), any(), any(), any(), any()))
+				.thenReturn(mockPrompt);
+		when(aiChatService.callAiModel(any(), any(), any()))
+				.thenReturn(mockChatResponse());
+		AnalyzeDiffResponse mapped = AnalyzeDiffResponse.builder()
+				.title("t")
+				.rawModelOutput("x".repeat(2048))
+				.build();
+		when(diffResponseMapperService.mapToAnalyzeDiffResponse(any(), anyLong(), any(), any(), any()))
+				.thenReturn(mapped);
+
+		AnalyzeDiffRequest request = AnalyzeDiffRequest.builder()
+		                                               .diff("diff")
+		                                               .requestId("req-1")
+		                                               .build();
+
+		assertThat(diffAnalysisService.analyzeDiff(request)).isSameAs(mapped);
+		verify(analysisCache, never()).put(anyString(), any());
 		verify(analysisMetrics).countCacheMiss("openai");
 	}
 

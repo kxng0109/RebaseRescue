@@ -265,7 +265,9 @@ PRCOPILOT_GATE_MIN_LEVEL=note
 
 `PRCOPILOT_ANALYSIS_MAX_REQUEST_BYTES` is a hard byte ceiling on `/api/v1/**`
 JSON bodies enforced before deserialization (413). `PRCOPILOT_CACHE_DIFF_MAX_SIZE=0`
-disables the response cache. Rate limiting is configured only via the
+disables the response cache. Responses over `PRCOPILOT_CACHE_DIFF_MAX_ENTRY_CHARS`
+(default 100000 chars) are served but not stored, bounding worst-case heap.
+Rate limiting is configured only via the
 `resilience4j.ratelimiter` properties (`PRCOPILOT_RATELIMITER_*` env vars).
 
 ### Responsiveness / Resources (all optional)
@@ -472,7 +474,7 @@ GITHUB_API_ALLOWED_HOSTS=api.github.com   # comma-separated; add an Enterprise S
 GITHUB_SARIF_CATEGORY=ai-pr-copilot
 ```
 
-Startup fails closed when `GITHUB_ENABLED=true` without a webhook secret or with a non-allowlisted base URL. Flow: webhook `POST /api/webhooks/github` (size cap 1MB via `RequestSizeLimitFilter` before HMAC, 413 on excess, `X-Request-ID` echoed only on pattern match, `@RequestBody byte[]` raw for HMAC `sha256=` + `MessageDigest.isEqual`, 403 on mismatch, `X-GitHub-Delivery` atomic dedup via `asMap().putIfAbsent` 30d, `ping` → `pong`, `github-webhook` rate limiter 60 per 1m with 429 fallback) → 202 within 10s onto bounded virtual-thread pool (4 core, 16 max, 100 queue, abort to 429 on saturation) → virtual-thread async: fetch diff (`Accept: application/vnd.github.diff`), `analyzeDiff`, post review (`line`+`side`, never deprecated `position`, `REQUEST_CHANGES` iff error-level risks) + SARIF upload (`gzip`→`base64`, `automationDetails.id` = category, poll to `complete`). JWT: `RS256` (keys floored at 2048 bits), `iss` = clientId/appId, `iat` = now-60s, `exp` = now+9m, `nimbus-jose-jwt 10.9.1` + `bcprov/bcpkix 1.86`. Tokens cached 55m (GitHub TTL 1h, stateless `ghs_APPID_JWT` format); API calls share one `RestClient` and retry once after token eviction on 401.
+Startup fails closed when `GITHUB_ENABLED=true` without a webhook secret or with a non-allowlisted base URL. Flow: webhook `POST /api/webhooks/github` (size cap 1MB via `RequestSizeLimitFilter` before HMAC, 413 on excess, `X-Request-ID` echoed only on pattern match, `@RequestBody byte[]` raw for HMAC `sha256=` + `MessageDigest.isEqual`, 403 on mismatch, `X-GitHub-Delivery` atomic dedup via `asMap().putIfAbsent` 30d, `ping` → `pong`, `github-webhook` rate limiter 60 per 1m with 429 fallback) → 202 within 10s onto bounded virtual-thread pool (4 core, 16 max, 100 queue, abort to 429 on saturation) → virtual-thread async: fetch diff (`Accept: application/vnd.github.diff`), `analyzeDiff`, post review (`line`+`side`, never deprecated `position`, `REQUEST_CHANGES` iff error-level risks) + SARIF upload (`gzip`→`base64`, 5MB budget via `PRCOPILOT_SARIF_MAX_BYTES`, `automationDetails.id` = category, poll survives transients to `complete`). JWT: `RS256` (keys floored at 2048 bits), `iss` = clientId/appId, `iat` = now-60s, `exp` = now+9m, `nimbus-jose-jwt 10.9.1` + `bcprov/bcpkix 1.86`. Tokens cached 55m (GitHub TTL 1h, stateless `ghs_APPID_JWT` format); API calls share one `RestClient` and retry once after token eviction on 401.
 
 Local dev: use a tunnel (ngrok/21tunnel) — smee.io is flaky per upstream. `DeliveryDedupStore` is in-memory Caffeine (single instance, best-effort dedup; idempotent analysis so rare double-process is safe).
 

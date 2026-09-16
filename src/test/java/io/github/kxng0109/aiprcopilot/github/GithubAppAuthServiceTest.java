@@ -237,6 +237,85 @@ class GithubAppAuthServiceTest {
         assertThat(service.getInstallationToken(42L)).isEqualTo("ghs_abc");
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void getInstallationToken_shouldRefreshStaleCacheEntry() throws Exception {
+        String pem = generatePem();
+        GithubProperties props = propsWithPem(pem, "123", null, 42L);
+        stubBuilder();
+        RestClient.RequestBodyUriSpec postSpec = mock(RestClient.RequestBodyUriSpec.class);
+        RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+        when(restClient.post()).thenReturn(postSpec);
+        when(postSpec.uri(anyString(), any(Object.class))).thenReturn(bodySpec);
+        when(bodySpec.header(anyString(), anyString())).thenReturn(bodySpec);
+        when(bodySpec.contentType(any(MediaType.class))).thenReturn(bodySpec);
+        when(bodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(Map.of("token", "ghs_old", "expires_at", "2000-01-01T00:00:00Z"))
+                .thenReturn(Map.of("token", "ghs_new", "expires_at", "2099-01-01T00:00:00Z"));
+
+        GithubAppAuthService service = new GithubAppAuthService(props, restClientBuilder);
+
+        assertThat(service.getInstallationToken(42L)).isEqualTo("ghs_old");
+        assertThat(service.getInstallationToken(42L)).isEqualTo("ghs_new");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void getInstallationToken_shouldFallBackToTtlWhenExpiresAtMissing() throws Exception {
+        String pem = generatePem();
+        GithubProperties props = propsWithPem(pem, "123", null, 42L);
+        stubBuilder();
+        RestClient.RequestBodyUriSpec postSpec = mock(RestClient.RequestBodyUriSpec.class);
+        RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+        when(restClient.post()).thenReturn(postSpec);
+        when(postSpec.uri(anyString(), any(Object.class))).thenReturn(bodySpec);
+        when(bodySpec.header(anyString(), anyString())).thenReturn(bodySpec);
+        when(bodySpec.contentType(any(MediaType.class))).thenReturn(bodySpec);
+        when(bodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(Map.of("token", "ghs_noexp"));
+
+        GithubAppAuthService service = new GithubAppAuthService(props, restClientBuilder);
+
+        assertThat(service.getInstallationToken(42L)).isEqualTo("ghs_noexp");
+        assertThat(service.getInstallationToken(42L)).isEqualTo("ghs_noexp");
+    }
+
+    @Test
+    void createJwt_shouldThrowWhenNeitherClientIdNorAppId() throws Exception {
+        String pem = generatePem();
+        GithubProperties props = propsWithPem(pem, "  ", "  ", 1L);
+        stubBuilder();
+        GithubAppAuthService service = new GithubAppAuthService(props, restClientBuilder);
+
+        assertThatThrownBy(service::createJwt).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @SuppressWarnings("DataFlowIssue")
+    void createJwt_shouldThrowWhenPrivateKeyNull() throws Exception {
+        GithubProperties props = propsWithPem(null, "123", null, 1L);
+        stubBuilder();
+        GithubAppAuthService service = new GithubAppAuthService(props, restClientBuilder);
+
+        assertThatThrownBy(service::createJwt).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void createJwt_shouldRejectNonRsaKey() throws Exception {
+        KeyPairGenerator gen = KeyPairGenerator.getInstance("EC");
+        gen.initialize(256);
+        String base64 = Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.UTF_8))
+                .encodeToString(gen.generateKeyPair().getPrivate().getEncoded());
+        String pem = "-----BEGIN PRIVATE KEY-----\n" + base64 + "\n-----END PRIVATE KEY-----\n";
+        GithubProperties props = propsWithPem(pem, "123", null, 1L);
+        stubBuilder();
+        GithubAppAuthService service = new GithubAppAuthService(props, restClientBuilder);
+
+        assertThatThrownBy(service::createJwt).isInstanceOf(IllegalStateException.class);
+    }
+
     @Test
     void createJwt_shouldThrowWhenPrivateKeyFileNotFound() throws Exception {
         GithubProperties props = propsWithPem("file:/no/such/file.pem", "123", null, 1L);

@@ -3,9 +3,13 @@ package io.github.kxng0109.aiprcopilot.github;
 import io.github.kxng0109.aiprcopilot.api.dto.AnalyzeDiffResponse;
 import io.github.kxng0109.aiprcopilot.api.dto.RiskItem;
 import io.github.kxng0109.aiprcopilot.config.GithubProperties;
+import io.github.kxng0109.aiprcopilot.config.PrCopilotSarifProperties;
+import io.github.kxng0109.aiprcopilot.error.DiffTooLargeException;
 import io.github.kxng0109.aiprcopilot.service.SarifService;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
@@ -44,6 +48,9 @@ class GithubApiClientTest {
     private SarifService sarifService;
 
     @Mock
+    private PrCopilotSarifProperties sarifProperties;
+
+    @Mock
     private RestClient.Builder restClientBuilder;
 
     @Mock
@@ -60,6 +67,7 @@ class GithubApiClientTest {
         p.getApi().setBaseUrl("https://api.github.com/");
         p.getApi().setApiVersion("2026-03-10");
         p.getSarif().setCategory("ai-pr-copilot");
+        lenient().when(sarifProperties.getMaxBytes()).thenReturn(5000000L);
         return p;
     }
 
@@ -98,7 +106,7 @@ class GithubApiClientTest {
         stubBuilder();
         when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
         stubFetchDiff("diff --git a/F.java");
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         String diff = client.fetchDiff("o", "r", 1, 42L);
 
@@ -112,7 +120,7 @@ class GithubApiClientTest {
         stubBuilder();
         when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
         stubFetchDiff("diff --git a/F.java");
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         assertThat(client.fetchDiff("o", "r", 1, 42L)).isNotBlank();
     }
@@ -124,7 +132,7 @@ class GithubApiClientTest {
         stubBuilder();
         when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
         stubFetchDiff("diff --git a/F.java");
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         assertThat(client.fetchDiff("o", "r", 1, 42L)).isNotBlank();
     }
@@ -142,7 +150,7 @@ class GithubApiClientTest {
         when(headersSpec.header(anyString(), anyString())).thenReturn(headersSpec);
         when(headersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(any(Class.class))).thenReturn(null);
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         assertThat(client.fetchDiff("o", "r", 1, 42L)).isEmpty();
     }
@@ -152,7 +160,7 @@ class GithubApiClientTest {
         GithubProperties p = props();
         p.getApp().setInstallationId(null);
         stubBuilder();
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         assertThatThrownBy(() -> client.fetchDiff("o", "r", 1, null))
                 .isInstanceOf(IllegalStateException.class);
@@ -174,7 +182,7 @@ class GithubApiClientTest {
         when(bodySpec.body(any(Map.class))).thenReturn(bodySpec);
         when(bodySpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.toBodilessEntity()).thenReturn(null);
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder()
                 .title("t")
@@ -212,7 +220,7 @@ class GithubApiClientTest {
         when(bodySpec.body(any(Map.class))).thenReturn(bodySpec);
         when(bodySpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.toBodilessEntity()).thenReturn(null);
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder()
                 .title("t")
@@ -258,7 +266,7 @@ class GithubApiClientTest {
         when(headersSpec.retrieve()).thenReturn(getResponse);
         when(getResponse.body(any(Class.class))).thenReturn(Map.of("processing_status", "complete"));
 
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
 
@@ -283,7 +291,7 @@ class GithubApiClientTest {
         when(bodySpec.body(any(Map.class))).thenReturn(bodySpec);
         when(bodySpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.toBodilessEntity()).thenReturn(null);
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder()
                 .title("t")
@@ -292,12 +300,237 @@ class GithubApiClientTest {
                 .build();
 
         client.postReview("o", "r", 1, "  ", analysis, 42L);
+        client.postReview("o", "r", 1, null, analysis, 42L);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(bodySpec).body(captor.capture());
-        assertThat(captor.getValue().containsKey("commit_id")).isFalse();
+        verify(bodySpec, times(2)).body(captor.capture());
+        assertThat(captor.getAllValues()).allSatisfy(
+                body -> assertThat(body.containsKey("commit_id")).isFalse());
         assertThat(captor.getValue().containsKey("comments")).isFalse();
     }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldMergeExistingAutomationDetails() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> firstRun = new LinkedHashMap<>();
+        firstRun.put("tool", Map.of("driver", Map.of("name", "ai-pr-copilot")));
+        Map<String, Object> existing = new LinkedHashMap<>();
+        existing.put("id", "old-category");
+        existing.put("custom", "keep-me");
+        firstRun.put("automationDetails", existing);
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", new ArrayList<>(List.of(firstRun)));
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of());
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        assertThat(firstRun.get("automationDetails")).isInstanceOf(Map.class);
+        Map<String, Object> automation = (Map<String, Object>) firstRun.get("automationDetails");
+        assertThat(automation.get("id")).isEqualTo("ai-pr-copilot");
+        assertThat(automation.get("custom")).isEqualTo("keep-me");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldSkipMergeForNonMapAutomationDetails() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> firstRun = new LinkedHashMap<>();
+        firstRun.put("tool", Map.of("driver", Map.of("name", "ai-pr-copilot")));
+        firstRun.put("automationDetails", "v1");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", new ArrayList<>(List.of(firstRun)));
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of());
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        assertThat(((Map<String, Object>) firstRun.get("automationDetails")).get("id"))
+                .isEqualTo("ai-pr-copilot");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldTolerateImmutableRunEntry() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", List.of(Map.of("tool", Map.of("driver", Map.of("name", "ai-pr-copilot")))));
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of());
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        verify(lastUploadBodySpec).body(any(Map.class));
+    }
+
+    @Test
+    void uploadSarif_shouldThrowWhenSerializationFails() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", null);
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        ObjectMapper failingMapper = mock(ObjectMapper.class);
+        when(failingMapper.writeValueAsString(any())).thenThrow(new RuntimeException("boom"));
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, failingMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        assertThatThrownBy(() -> client.uploadSarif(
+                "o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("serialize");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldHandleNullCategory() {
+        GithubProperties p = props();
+        p.getSarif().setCategory(null);
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", null);
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of());
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        verify(lastUploadBodySpec).body(any(Map.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldPollThroughPendingToComplete() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", null);
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of("id", "sarif-1"));
+        stubPollGet(
+                Map.of("processing_status", "pending"),
+                Map.of("processing_status", "complete"));
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        verify(lastPollSpec, times(2)).body(any(Class.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldStopOnFailedPollStatus() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", null);
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of("id", "sarif-2"));
+        stubPollGet(Map.of("processing_status", "failed", "errors", List.of("bad")));
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        verify(lastPollSpec, times(1)).body(any(Class.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldContinueAfterTransientPollFailure() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", null);
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of("id", "sarif-3"));
+        RestClient.RequestHeadersUriSpec getSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec pollSpec = mock(RestClient.ResponseSpec.class);
+        when(restClient.get()).thenReturn(getSpec);
+        when(getSpec.uri(anyString(), any(Object.class), any(Object.class), any(Object.class))).thenReturn(headersSpec);
+        when(headersSpec.header(anyString(), anyString())).thenReturn(headersSpec);
+        when(headersSpec.retrieve()).thenReturn(pollSpec);
+        when(pollSpec.body(any(Class.class)))
+                .thenThrow(new RuntimeException("transient"))
+                .thenReturn(Map.of("processing_status", "complete"));
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        verify(pollSpec, times(2)).body(any(Class.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private RestClient.RequestBodySpec stubUploadPost(Map<String, Object> response) {
+        RestClient.RequestBodyUriSpec postSpec = mock(RestClient.RequestBodyUriSpec.class);
+        RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
+        RestClient.ResponseSpec postResponse = mock(RestClient.ResponseSpec.class);
+        when(restClient.post()).thenReturn(postSpec);
+        when(postSpec.uri(anyString(), any(Object.class), any(Object.class))).thenReturn(bodySpec);
+        when(bodySpec.header(anyString(), anyString())).thenReturn(bodySpec);
+        when(bodySpec.contentType(any(MediaType.class))).thenReturn(bodySpec);
+        when(bodySpec.body(any(Map.class))).thenReturn(bodySpec);
+        when(bodySpec.retrieve()).thenReturn(postResponse);
+        when(postResponse.body(any(Class.class))).thenReturn(response);
+        lastUploadBodySpec = bodySpec;
+        return bodySpec;
+    }
+
+    private RestClient.RequestBodySpec lastUploadBodySpec;
+
+    @SuppressWarnings("unchecked")
+    private RestClient.ResponseSpec stubPollGet(Map<String, Object> first, Map<String, Object>... rest) {
+        RestClient.RequestHeadersUriSpec getSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec pollSpec = mock(RestClient.ResponseSpec.class);
+        when(restClient.get()).thenReturn(getSpec);
+        when(getSpec.uri(anyString(), any(Object.class), any(Object.class), any(Object.class))).thenReturn(headersSpec);
+        when(headersSpec.header(anyString(), anyString())).thenReturn(headersSpec);
+        when(headersSpec.retrieve()).thenReturn(pollSpec);
+        when(pollSpec.body(any(Class.class))).thenReturn(first, rest);
+        lastPollSpec = pollSpec;
+        return pollSpec;
+    }
+
+    private RestClient.ResponseSpec lastPollSpec;
 
     @SuppressWarnings("unchecked")
     @Test
@@ -322,7 +555,7 @@ class GithubApiClientTest {
         when(bodySpec.retrieve()).thenReturn(postResponse);
         when(postResponse.body(any(Class.class))).thenReturn(null);
 
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
 
@@ -331,13 +564,146 @@ class GithubApiClientTest {
         verify(bodySpec).body(any(Map.class));
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldSkipMergeForEmptyRuns() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", new java.util.ArrayList<>());
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of());
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        verify(lastUploadBodySpec).body(any(Map.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldReturnOnNullPollStatus() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", null);
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of("id", "sarif-null"));
+        stubPollGet((Map<String, Object>) null);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+
+        verify(lastPollSpec, times(1)).body(any(Class.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldRestoreInterruptAndReturnOnPollInterrupt() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", null);
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        stubUploadPost(Map.of("id", "sarif-int"));
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+        Thread.currentThread().interrupt();
+        try {
+            client.uploadSarif("o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L);
+        } finally {
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            Thread.interrupted();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void postReview_shouldCapInlineCommentsAndSkipNonActionableRisks() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        RestClient.RequestBodyUriSpec postSpec = mock(RestClient.RequestBodyUriSpec.class);
+        RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+        when(restClient.post()).thenReturn(postSpec);
+        when(postSpec.uri(anyString(), any(Object.class), any(Object.class), any(Object.class))).thenReturn(bodySpec);
+        when(bodySpec.header(anyString(), anyString())).thenReturn(bodySpec);
+        when(bodySpec.contentType(any(MediaType.class))).thenReturn(bodySpec);
+        when(bodySpec.body(any(Map.class))).thenReturn(bodySpec);
+        when(bodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.toBodilessEntity()).thenReturn(null);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        List<RiskItem> risks = new ArrayList<>();
+        for (int i = 0; i < 11; i++) {
+            risks.add(new RiskItem("error", "problem-" + i));
+        }
+        risks.add(new RiskItem("warning", "watch out"));
+        risks.add(new RiskItem("note", "fyi"));
+        risks.add(new RiskItem("error", null));
+        risks.add(new RiskItem("error", "  "));
+        AnalyzeDiffResponse full = AnalyzeDiffResponse.builder()
+                .risks(risks)
+                .touchedFiles(List.of("src/Main.java"))
+                .suggestedTests(List.of("t1", "t2"))
+                .build();
+        AnalyzeDiffResponse bare = AnalyzeDiffResponse.builder()
+                .title("t")
+                .risks(List.of(new RiskItem("error", "boom")))
+                .suggestedTests(List.of())
+                .build();
+
+        client.postReview("o", "r", 1, "abc", full, 42L);
+        client.postReview("o", "r", 2, "abc", bare, 42L);
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(bodySpec, times(2)).body(captor.capture());
+        List<Object> firstComments = (List<Object>) captor.getAllValues().get(0).get("comments");
+        assertThat(firstComments).hasSize(10);
+        assertThat(captor.getAllValues().get(1).containsKey("comments")).isFalse();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void uploadSarif_shouldRejectOversizedDocument() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(sarifProperties.getMaxBytes()).thenReturn(10L);
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        Map<String, Object> sarifDoc = new java.util.LinkedHashMap<>();
+        sarifDoc.put("version", "2.1.0");
+        sarifDoc.put("runs", null);
+        when(sarifService.toSarif(any())).thenReturn(sarifDoc);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
+
+        AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
+
+        assertThatThrownBy(() -> client.uploadSarif(
+                "o", "r", "abc123def456abc123def456abc123def456abcd", "refs/pull/1/head", analysis, 42L))
+                .isInstanceOf(DiffTooLargeException.class);
+
+        verify(restClient, never()).post();
+    }
+
     @Test
     void fetchDiff_noArgShouldUseDefaultInstallationId() {
         GithubProperties p = props();
         stubBuilder();
         when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
         stubFetchDiff("diff");
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         assertThat(client.fetchDiff("o", "r", 1)).isEqualTo("diff");
     }
@@ -366,7 +732,7 @@ class GithubApiClientTest {
         when(responseSpec.body(any(Class.class)))
                 .thenThrow(responseException(HttpStatus.UNAUTHORIZED))
                 .thenReturn("recovered".getBytes(StandardCharsets.UTF_8));
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         assertThat(client.fetchDiff("o", "r", 1, 42L)).isEqualTo("recovered");
 
@@ -383,7 +749,7 @@ class GithubApiClientTest {
         when(responseSpec.body(any(Class.class)))
                 .thenThrow(responseException(HttpStatus.UNAUTHORIZED))
                 .thenThrow(responseException(HttpStatus.UNAUTHORIZED));
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         assertThatThrownBy(() -> client.fetchDiff("o", "r", 1, 42L))
                 .isInstanceOf(RestClientResponseException.class);
@@ -400,7 +766,7 @@ class GithubApiClientTest {
         RestClient.ResponseSpec responseSpec = stubFetchDiffBody();
         when(responseSpec.body(any(Class.class)))
                 .thenThrow(responseException(HttpStatus.INTERNAL_SERVER_ERROR));
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         assertThatThrownBy(() -> client.fetchDiff("o", "r", 1, 42L))
                 .isInstanceOf(RestClientResponseException.class);
@@ -415,7 +781,7 @@ class GithubApiClientTest {
         stubBuilder();
         when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
         stubFetchDiff("diff");
-        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         client.fetchDiff("o", "r", 1, 42L);
         client.fetchDiff("o", "r", 2, 42L);

@@ -55,6 +55,15 @@ public class PrCopilotAnalysisProperties {
 	@Min(value = 0, message = "Diff cache max size must not be negative (0 disables the cache)")
 	private int cacheMaxSize = 1000;
 
+	/**
+	 * Per-entry cache admission budget in characters. Responses estimating
+	 * above this are served but not stored, bounding worst-case heap to
+	 * entries times budget regardless of model output size. A skipped put
+	 * is always safe: the next identical request simply misses.
+	 */
+	@Min(value = 1024, message = "Diff cache max entry characters must be at least 1024")
+	private long cacheMaxEntryChars = 100000;
+
 	private Duration cacheTtl = Duration.ofMinutes(30);
 
 	@NotBlank(message = "Minimum level can not be blank (note|warning|error)")

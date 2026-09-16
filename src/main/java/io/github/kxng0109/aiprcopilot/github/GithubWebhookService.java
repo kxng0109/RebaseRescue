@@ -103,16 +103,10 @@ public class GithubWebhookService {
         }
 
         String installationId = parsed.installationId();
-        Long installId = null;
-        if (installationId != null) {
-            try {
-                installId = Long.valueOf(installationId);
-            } catch (NumberFormatException ignored) {
-                installId = properties.getApp().getInstallationId();
-            }
-        } else {
-            installId = properties.getApp().getInstallationId();
-        }
+        // installationId renders from a parsed Long, so parsing back cannot fail.
+        Long installId = installationId != null
+                ? Long.valueOf(installationId)
+                : properties.getApp().getInstallationId();
 
         try {
             githubApiClient.postReview(owner, repo, prNumber, headSha, analysis, installId);

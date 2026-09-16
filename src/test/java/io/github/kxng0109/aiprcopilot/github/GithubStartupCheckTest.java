@@ -47,6 +47,38 @@ class GithubStartupCheckTest {
     }
 
     @Test
+    void validateConfiguration_shouldFailWhenSecretNull() {
+        GithubProperties props = enabledProps(null, "https://api.github.com");
+
+        assertThatThrownBy(() -> new GithubStartupCheck(props).validateConfiguration())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("webhook.secret");
+    }
+
+    @Test
+    void validateConfiguration_shouldUseDefaultForBlankBaseUrl() {
+        GithubProperties props = enabledProps("s3cret", "  ");
+
+        assertThatCode(() -> new GithubStartupCheck(props).validateConfiguration())
+                .doesNotThrowAnyException();
+
+        GithubProperties nullBase = enabledProps("s3cret", "https://api.github.com");
+        nullBase.getApi().setBaseUrl(null);
+
+        assertThatCode(() -> new GithubStartupCheck(nullBase).validateConfiguration())
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void validateConfiguration_shouldWarnButPassForPrivateAllowlistEntry() {
+        GithubProperties props = enabledProps("s3cret", "https://10.20.30.40");
+        props.getApi().setAllowedHosts(List.of("api.github.com", "10.20.30.40"));
+
+        assertThatCode(() -> new GithubStartupCheck(props).validateConfiguration())
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     void validateConfiguration_shouldFailWhenBaseUrlNotAllowlisted() {
         GithubProperties props = enabledProps("s3cret", "http://evil.example.com");
 

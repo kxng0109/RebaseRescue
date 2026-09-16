@@ -1,5 +1,6 @@
 package io.github.kxng0109.aiprcopilot.config;
 
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -32,4 +33,12 @@ public class PrCopilotSarifProperties {
 	 * Path to the repo-local false-positive suppress file. Empty disables suppression.
 	 */
 	private String suppressFile = ".ai-review-ignore.yml";
+
+	/**
+	 * Maximum serialized SARIF document bytes accepted for upload. Rejects
+	 * early, well under GitHub's 10MB gzipped cap, instead of discovering
+	 * rejection after minutes of polling.
+	 */
+	@Min(value = 1024, message = "SARIF max bytes must be at least 1024")
+	private long maxBytes = 5000000;
 }

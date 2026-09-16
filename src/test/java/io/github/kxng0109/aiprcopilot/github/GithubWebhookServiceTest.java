@@ -123,6 +123,46 @@ class GithubWebhookServiceTest {
     }
 
     @Test
+    void handleAsync_shouldHandleMissingRepository() {
+        String json = """
+                {"action":"opened","number":9,"pull_request":{"number":9,"title":"t","head":{"sha":"sha9","ref":"feat"},"base":{"ref":"main","sha":"base"}}}
+                """;
+        GithubWebhookService svc = service(Runnable::run);
+        svc.handleAsync("d9", "pull_request", json);
+        verify(apiClient, never()).fetchDiff(anyString(), anyString(), anyInt());
+    }
+
+    @Test
+    void handleAsync_shouldSkipAnalysisWhenDiffNull() {
+        when(apiClient.fetchDiff(anyString(), anyString(), anyInt())).thenReturn(null);
+        GithubWebhookService svc = service(Runnable::run);
+
+        svc.handleAsync("d1", "pull_request", payload("opened", 1, "abc"));
+
+        verify(diffAnalysisService, never()).analyzeDiff(any());
+    }
+
+    @Test
+    void handleAsync_shouldUseHeadFallbackAndPullRefVariants() {
+        lenient().when(apiClient.fetchDiff(anyString(), anyString(), anyInt())).thenReturn("diff");
+        AnalyzeDiffResponse response = AnalyzeDiffResponse.builder().title("t").build();
+        when(diffAnalysisService.analyzeDiff(any())).thenReturn(response);
+        GithubWebhookService svc = service(Runnable::run);
+        String nullBase = """
+                {"action":"opened","number":11,"pull_request":{"number":11,"title":"t","head":{"sha":null,"ref":"feat"},"base":{"ref":null}},"repository":{"name":"r","full_name":"o/r","owner":{"login":"o"}},"installation":{"id":42}}
+                """;
+        String blankBase = """
+                {"action":"opened","number":12,"pull_request":{"number":12,"title":"t","head":{"sha":"sha12","ref":"feat"},"base":{"ref":"  "}},"repository":{"name":"r","full_name":"o/r","owner":{"login":"o"}},"installation":{"id":42}}
+                """;
+
+        svc.handleAsync("d11", "pull_request", nullBase);
+        svc.handleAsync("d12", "pull_request", blankBase);
+
+        verify(apiClient).uploadSarif(eq("o"), eq("r"), eq("HEAD"), eq("refs/pull/11/head"), any(), eq(42L));
+        verify(apiClient).uploadSarif(eq("o"), eq("r"), eq("sha12"), eq("refs/pull/12/head"), any(), eq(42L));
+    }
+
+    @Test
     void handleAsync_shouldProcessSynchronizeAndReadyForReview() {
         lenient().when(apiClient.fetchDiff(anyString(), anyString(), anyInt())).thenReturn("diff");
         AnalyzeDiffResponse response = AnalyzeDiffResponse.builder().title("t").build();

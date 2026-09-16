@@ -151,12 +151,7 @@ public final class GithubApiHostPolicy {
         if (!allowed.contains("api.github.com")) {
             return false;
         }
-        try {
-            URI uri = URI.create(baseUrl);
-            return "api.github.com".equalsIgnoreCase(uri.getHost());
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
+        return "api.github.com".equalsIgnoreCase(URI.create(baseUrl).getHost());
     }
 
     /**
@@ -181,7 +176,7 @@ public final class GithubApiHostPolicy {
      * warn operators about explicitly listed internal addresses, which are
      * accepted only through explicit listing.
      *
-     * @param host the lower-cased host, must not be {@code null}
+     * @param host the host to check, may be {@code null}
      * @return {@code true} for RFC 1918, link-local, and similar ranges
      */
     public static boolean isPrivateIpv4(String host) {
@@ -192,46 +187,34 @@ public final class GithubApiHostPolicy {
         if (!IPV4_LITERAL.matcher(host).matches()) {
             return false;
         }
+        // The literal pattern guarantees four ASCII numeric octets, so parsing cannot fail.
         String[] parts = host.split("\\.", -1);
-        if (parts.length != 4) {
+        int first = Integer.parseInt(parts[0]);
+        int second = Integer.parseInt(parts[1]);
+        for (String part : parts) {
+            int octet = Integer.parseInt(part);
+            if (octet < 0 || octet > 255) {
+                return true;
+            }
+        }
+        if (first == 10 || first == 127 || first == 0) {
             return true;
         }
-        try {
-            int first = Integer.parseInt(parts[0]);
-            int second = Integer.parseInt(parts[1]);
-            for (String part : parts) {
-                int octet = Integer.parseInt(part);
-                if (octet < 0 || octet > 255) {
-                    return true;
-                }
-            }
-            if (first == 10 || first == 127 || first == 0) {
-                return true;
-            }
-            if (first == 172 && second >= 16 && second <= 31) {
-                return true;
-            }
-            if (first == 192 && second == 168) {
-                return true;
-            }
-            if (first == 169 && second == 254) {
-                return true;
-            }
-            return false;
-        } catch (NumberFormatException e) {
+        if (first == 172 && second >= 16 && second <= 31) {
             return true;
         }
+        if (first == 192 && second == 168) {
+            return true;
+        }
+        return first == 169 && second == 254;
     }
 
     private static boolean isLoopbackIpv4(String host) {
         if (!IPV4_LITERAL.matcher(host).matches()) {
             return false;
         }
+        // Same guarantee as above: ASCII numeric octets always parse.
         String[] parts = host.split("\\.", -1);
-        try {
-            return Integer.parseInt(parts[0]) == 127 || "0.0.0.0".equals(host);
-        } catch (NumberFormatException e) {
-            return true;
-        }
+        return Integer.parseInt(parts[0]) == 127 || "0.0.0.0".equals(host);
     }
 }

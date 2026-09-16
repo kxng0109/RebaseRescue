@@ -49,7 +49,7 @@ public class GithubStartupCheck {
             throw new IllegalStateException("Invalid github.api configuration: " + e.getMessage());
         }
         for (String entry : properties.getApi().getAllowedHosts()) {
-            if (entry != null && GithubApiHostPolicy.isPrivateIpv4(entry.trim())) {
+            if (GithubApiHostPolicy.isPrivateIpv4(entry.trim())) {
                 log.warn("Allowed GitHub API host '{}' is a private-network address; ensure this is intended",
                         entry.trim());
             }

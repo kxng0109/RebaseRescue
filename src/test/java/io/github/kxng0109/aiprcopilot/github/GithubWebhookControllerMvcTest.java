@@ -66,6 +66,29 @@ class GithubWebhookControllerMvcTest {
     }
 
     @Test
+    void handle_shouldReturn400WhenDeliveryBlank() throws Exception {
+        mockMvc.perform(post("/api/webhooks/github")
+                        .header("X-GitHub-Delivery", "   ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+        verify(webhookService, never()).handleAsync(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void handle_shouldIgnoreMissingEvent() throws Exception {
+        String body = "{\"action\":\"opened\"}";
+        String sig = hmac("test-secret-123", body);
+        mockMvc.perform(post("/api/webhooks/github")
+                        .header("X-GitHub-Delivery", "delivery-no-event")
+                        .header("X-Hub-Signature-256", sig)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+        verify(webhookService, never()).handleAsync(anyString(), anyString(), anyString());
+    }
+
+    @Test
     void handle_shouldReturn403WhenSignatureInvalid() throws Exception {
         String body = "{\"action\":\"opened\"}";
         mockMvc.perform(post("/api/webhooks/github")

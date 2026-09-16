@@ -3,6 +3,7 @@ package io.github.kxng0109.aiprcopilot.service;
 import com.github.benmanes.caffeine.cache.Cache;
 import io.github.kxng0109.aiprcopilot.api.dto.AnalyzeDiffRequest;
 import io.github.kxng0109.aiprcopilot.api.dto.AnalyzeDiffResponse;
+import io.github.kxng0109.aiprcopilot.api.dto.RiskItem;
 import io.github.kxng0109.aiprcopilot.config.AiProvider;
 import io.github.kxng0109.aiprcopilot.config.MultiAiConfigurationProperties;
 import io.github.kxng0109.aiprcopilot.config.PrCopilotAnalysisProperties;
@@ -441,8 +442,55 @@ public class DiffAnalysisService {
 
 	private void putCache(String cacheKey, AnalyzeDiffResponse response) {
 		if (analysisProperties.getCacheMaxSize() > 0 && response != null) {
+			long estimate = estimateResponseChars(response);
+			if (estimate > analysisProperties.getCacheMaxEntryChars()) {
+				log.debug("Skipping cache store for oversized response (est. {} chars)", estimate);
+				return;
+			}
 			analysisCache.put(cacheKey, response);
 		}
+	}
+
+	/**
+	 * Estimates response size in characters for cache admission. Sums all
+	 * text fields and list entries; used only to bound worst-case heap, so
+	 * a cheap over-approximation is fine. Skipped puts stay correct: the
+	 * next identical request simply misses.
+	 *
+	 * @param response the response to measure, must not be {@code null}
+	 * @return estimated character count, never negative
+	 */
+	static long estimateResponseChars(AnalyzeDiffResponse response) {
+		long total = lengthOf(response.title())
+				+ lengthOf(response.summary())
+				+ lengthOf(response.details())
+				+ lengthOf(response.analysisNotes())
+				+ lengthOf(response.requestId())
+				+ lengthOf(response.rawModelOutput());
+		if (response.risks() != null) {
+			for (RiskItem risk : response.risks()) {
+				if (risk != null) {
+					total += lengthOf(risk.level()) + lengthOf(risk.message());
+				}
+			}
+		}
+		total += lengthsOf(response.suggestedTests()) + lengthsOf(response.touchedFiles());
+		return total;
+	}
+
+	private static long lengthOf(String value) {
+		return value == null ? 0 : value.length();
+	}
+
+	private static long lengthsOf(List<String> values) {
+		if (values == null) {
+			return 0;
+		}
+		long total = 0;
+		for (String value : values) {
+			total += lengthOf(value);
+		}
+		return total;
 	}
 
 	private String cacheKey(

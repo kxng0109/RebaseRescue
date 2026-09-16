@@ -3,6 +3,9 @@ package io.github.kxng0109.aiprcopilot.github;
 import io.github.kxng0109.aiprcopilot.api.dto.AnalyzeDiffResponse;
 import io.github.kxng0109.aiprcopilot.api.dto.RiskItem;
 import io.github.kxng0109.aiprcopilot.config.GithubProperties;
+import io.github.kxng0109.aiprcopilot.config.PrCopilotSarifProperties;
+import io.github.kxng0109.aiprcopilot.error.DiffTooLargeException;
+import io.github.kxng0109.aiprcopilot.service.DiffAnalysisService;
 import io.github.kxng0109.aiprcopilot.service.SarifService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -41,14 +44,17 @@ public class GithubApiClient {
     private final GithubProperties properties;
     private final GithubAppAuthService authService;
     private final SarifService sarifService;
+    private final PrCopilotSarifProperties sarifProperties;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
     public GithubApiClient(GithubProperties properties, GithubAppAuthService authService,
-            SarifService sarifService, ObjectMapper objectMapper, RestClient.Builder restClientBuilder) {
+            SarifService sarifService, PrCopilotSarifProperties sarifProperties,
+            ObjectMapper objectMapper, RestClient.Builder restClientBuilder) {
         this.properties = properties;
         this.authService = authService;
         this.sarifService = sarifService;
+        this.sarifProperties = sarifProperties;
         this.objectMapper = objectMapper;
         String baseUrl = GithubApiHostPolicy.normalize(
                 properties.getApi().getBaseUrl(), properties.getApi().getAllowedHosts());
@@ -185,6 +191,12 @@ public class GithubApiClient {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to serialize SARIF", e);
         }
+        long sarifBytes = sarifJson.getBytes(StandardCharsets.UTF_8).length;
+        if (sarifBytes > sarifProperties.getMaxBytes()) {
+            throw new DiffTooLargeException(
+                    "SARIF document of " + sarifBytes + " bytes exceeds the "
+                            + sarifProperties.getMaxBytes() + " byte budget");
+        }
         String encoded = gzipBase64(sarifJson);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("commit_sha", commitSha);
@@ -236,8 +248,8 @@ public class GithubApiClient {
                     return;
                 }
             } catch (Exception e) {
-                log.warn("GitHub SARIF poll failed for {}/{} id={}: {}", owner, repo, sarifId, e.getMessage());
-                return;
+                log.warn("GitHub SARIF poll attempt failed for {}/{} id={}: {}",
+                        owner, repo, sarifId, e.getMessage());
             }
         }
         log.warn("GitHub SARIF poll timed out for {}/{} id={}", owner, repo, sarifId);

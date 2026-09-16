@@ -104,6 +104,21 @@ class GithubWebhookPayloadTest {
     }
 
     @Test
+    @SuppressWarnings("DataFlowIssue")
+    void parse_shouldThrowOnNull() {
+        assertThatThrownBy(() -> GithubWebhookPayload.parse(null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void repository_ownerLogin_shouldFallBackWhenOwnerLoginNull() {
+        GithubWebhookPayload.Repository repo = new GithubWebhookPayload.Repository(
+                "repo", "fallback-org/repo", new GithubWebhookPayload.Owner(null));
+
+        assertThat(repo.ownerLogin()).isEqualTo("fallback-org");
+    }
+
+    @Test
     void repository_ownerLogin_shouldReturnNullWhenNoData() {
         GithubWebhookPayload.Repository repo = new GithubWebhookPayload.Repository("r", null, null);
 

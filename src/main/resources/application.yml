@@ -43,6 +43,9 @@ prcopilot:
     max-touched-files: ${PRCOPILOT_ANALYSIS_MAX_TOUCHED_FILES:500}
     # Diff-hash response cache (0 = disabled)
     cache-max-size: ${PRCOPILOT_CACHE_DIFF_MAX_SIZE:1000}
+    # Per-entry cache admission budget in characters: oversized responses are
+    # served but not stored, bounding worst-case heap (entries times budget)
+    cache-max-entry-chars: ${PRCOPILOT_CACHE_DIFF_MAX_ENTRY_CHARS:100000}
     cache-ttl: ${PRCOPILOT_CACHE_DIFF_TTL:30m}
     # Minimum severity to include in responses/SARIF (note|warning|error)
     min-level: ${PRCOPILOT_GATE_MIN_LEVEL:note}
@@ -85,6 +88,8 @@ prcopilot:
     category: ${PRCOPILOT_SARIF_CATEGORY:ai-pr-copilot}
     # Path to repo-local false-positive suppress file (empty = no suppression)
     suppress-file: ${PRCOPILOT_SUPPRESS_FILE:.ai-review-ignore.yml}
+    # Maximum serialized SARIF bytes accepted for upload (GitHub caps at 10MB gzipped)
+    max-bytes: ${PRCOPILOT_SARIF_MAX_BYTES:5000000}
 
 github:
   enabled: ${GITHUB_ENABLED:false}
