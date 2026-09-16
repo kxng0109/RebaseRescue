@@ -317,7 +317,7 @@ public class DiffAnalysisControllerTest {
 	}
 
 	@Test
-	public void analyzeDiff_shouldThrow500RuntimeException_whenErrorIsGeneric() throws Exception {
+	public void analyzeDiff_shouldReturnGeneric500_whenErrorIsGeneric() throws Exception {
 		AnalyzeDiffRequest request = AnalyzeDiffRequest.builder()
 		                                               .diff("x")
 		                                               .maxSummaryLength(1024)
@@ -332,7 +332,7 @@ public class DiffAnalysisControllerTest {
 				                .content(objectMapper.writeValueAsString(request)))
 		       .andExpect(status().isInternalServerError())
 		       .andExpect(jsonPath("$.statusCode").value(500))
-		       .andExpect(jsonPath("$.message").value("boommmmmm!!!"))
+		       .andExpect(jsonPath("$.message").value("Internal Server Error"))
 		       .andExpect(jsonPath("$.path").value("/api/v1/analyze-diff"));
 
 		verify(diffAnalysisService).analyzeDiff(any(AnalyzeDiffRequest.class));

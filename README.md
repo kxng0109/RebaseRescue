@@ -352,8 +352,12 @@ Structured errors via `GlobalExceptionHandler`:
 - 413 for oversized request body or diff
 - 422 for invalid model output
 - 429 for rate limit or provider concurrency exceeded
-- 500 for unexpected errors
-- 502 or 504 for upstream access or timeout
+- 500 for unexpected errors (generic body, details in server log)
+- 502 or 504 for upstream access or timeout (reason phrase only, no provider details)
+
+Error-body hygiene: 5xx responses never echo exception text; details are
+logged server-side with the correlation ID. 4xx responses carry
+app-authored messages. The same split applies to SSE `error` events.
 
 Pass `X-Request-ID` (1-64 chars of letters, digits, `-`, `_`) to correlate
 errors; the value is echoed back as `requestId`. The `requestId` body field

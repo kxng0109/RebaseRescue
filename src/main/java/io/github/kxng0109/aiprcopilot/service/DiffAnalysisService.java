@@ -337,7 +337,7 @@ public class DiffAnalysisService {
 							"Streaming analysis failed for requestId '{}': {}",
 							request.requestId(), e.getMessage()
 					);
-					emitter.send(event("error", e.getMessage() == null ? "Streaming failed" : e.getMessage()));
+					emitter.send(event("error", streamSafeMessage(e)));
 				} catch (Exception sendFailure) {
 					log.debug("Could not send SSE error event", sendFailure);
 				}
@@ -351,6 +351,25 @@ public class DiffAnalysisService {
 	private SseEmitter.SseEventBuilder event(
 			String name, Object data) {
 		return SseEmitter.event().name(name).data(data);
+	}
+
+	/**
+	 * Sanitizes stream failure text the same way as HTTP error bodies: 4xx
+	 * app messages pass through, 5xx collapse to the reason phrase, and
+	 * anything else becomes a generic notice. Details stay in the log.
+	 */
+	static String streamSafeMessage(Exception e) {
+		if (e instanceof CustomApiException custom) {
+			HttpStatus status = custom.getHttpStatus();
+			if (status != null && status.is4xxClientError()
+					&& custom.getMessage() != null && !custom.getMessage().isBlank()) {
+				return custom.getMessage();
+			}
+			if (status != null) {
+				return status.getReasonPhrase();
+			}
+		}
+		return "Streaming failed";
 	}
 
 	/**

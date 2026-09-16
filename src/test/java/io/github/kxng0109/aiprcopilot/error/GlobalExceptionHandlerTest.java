@@ -117,30 +117,31 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
-	void handleNotReadable_shouldPassThroughOtherMessages() {
+	void handleNotReadable_shouldUseGenericMessage() {
 		when(notReadableException.getMessage()).thenReturn("JSON parse error at line 1");
 		ResponseEntity<ErrorResponse> response = handler
 				.handleHttpMessageNotReadableException(notReadableException, request(null));
 
-		assertThat(response.getBody().message()).isEqualTo("JSON parse error at line 1");
+		assertThat(response.getBody().message()).isEqualTo("Malformed JSON request body.");
 	}
 
 	@Test
-	void handleNotReadable_shouldUseReasonPhrase_whenMessageNull() {
+	void handleNotReadable_shouldUseGenericMessage_whenMessageNull() {
 		when(notReadableException.getMessage()).thenReturn(null);
 		ResponseEntity<ErrorResponse> response = handler
 				.handleHttpMessageNotReadableException(notReadableException, request(null));
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-		assertThat(response.getBody().message()).isEqualTo("Bad Request");
+		assertThat(response.getBody().message()).isEqualTo("Malformed JSON request body.");
 	}
 
 	@Test
 	void handleModelOutputParse_shouldReturn422() {
 		ResponseEntity<ErrorResponse> response = handler.handleModelOutputParseException(
-				new ModelOutputParseException("bad json"), request(null));
+				new ModelOutputParseException("bad json with preview secrets"), request(null));
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
+		assertThat(response.getBody().message()).isEqualTo("AI model returned unparsable output.");
 	}
 
 	@Test
@@ -161,12 +162,25 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	void handleCustomApi_shouldSanitize5xx() {
+		ResponseEntity<ErrorResponse> response = handler.handleCustomApiException(
+				new CustomApiException("Failed to resolve internal-ai-7: Name or service not known",
+						HttpStatus.BAD_GATEWAY),
+				request(null));
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+		assertThat(response.getBody().message()).isEqualTo("Bad Gateway");
+		assertThat(response.getBody().message()).doesNotContain("internal-ai-7");
+	}
+
+	@Test
 	void handleGeneric_shouldReturn500WithMessage() {
 		ResponseEntity<ErrorResponse> response =
 				handler.handleException(new RuntimeException("boom"), request(null));
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-		assertThat(response.getBody().message()).isEqualTo("boom");
+		assertThat(response.getBody().message()).isEqualTo("Internal Server Error");
+		assertThat(response.getBody().message()).doesNotContain("boom");
 	}
 
 	@Test
