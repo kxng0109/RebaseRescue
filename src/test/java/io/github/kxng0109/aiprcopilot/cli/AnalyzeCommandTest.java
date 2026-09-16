@@ -2,6 +2,7 @@ package io.github.kxng0109.aiprcopilot.cli;
 
 import io.github.kxng0109.aiprcopilot.api.dto.AiCallMetadata;
 import io.github.kxng0109.aiprcopilot.api.dto.AnalyzeDiffResponse;
+import io.github.kxng0109.aiprcopilot.config.AppInfo;
 import io.github.kxng0109.aiprcopilot.service.DiffAnalysisService;
 import io.github.kxng0109.aiprcopilot.service.GitService;
 import org.junit.jupiter.api.BeforeEach;
@@ -261,7 +262,7 @@ public class AnalyzeCommandTest {
 		int exitCode = commandLine.execute("--version");
 
 		assertEquals(0, exitCode);
-		assertTrue(stdout.toString().contains("ai-pr-copilot 1.1.0"));
+		assertTrue(stdout.toString().contains(AppInfo.NAME + " " + AppInfo.VERSION));
 	}
 
 	@Test
