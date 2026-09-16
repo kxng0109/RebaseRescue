@@ -18,5 +18,6 @@ class GithubPropertiesTest {
         assertThat(props.getWebhook().getDedupTtl()).isNotNull();
         assertThat(props.getWebhook().getDedupMaxSize()).isGreaterThan(0);
         assertThat(props.getWebhook().getMaxRequestBytes()).isGreaterThanOrEqualTo(1024L);
+        assertThat(props.getApi().getAllowedHosts()).containsExactly("api.github.com");
     }
 }

@@ -42,12 +42,10 @@ public class GithubApiClient {
     private final RestClient.Builder restClientBuilder;
 
     private RestClient restClient() {
-        String baseUrl = properties.getApi().getBaseUrl();
-        if (baseUrl != null && baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        }
+        String baseUrl = GithubApiHostPolicy.normalize(
+                properties.getApi().getBaseUrl(), properties.getApi().getAllowedHosts());
         return restClientBuilder
-                .baseUrl(baseUrl != null && !baseUrl.isBlank() ? baseUrl : "https://api.github.com")
+                .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
                 .defaultHeader("X-GitHub-Api-Version", properties.getApi().getApiVersion())
                 .build();

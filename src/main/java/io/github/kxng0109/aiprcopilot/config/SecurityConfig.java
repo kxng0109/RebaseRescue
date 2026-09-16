@@ -16,6 +16,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Objects;
+
 /**
  * Deny-by-default security.
  *
@@ -41,7 +43,8 @@ public class SecurityConfig {
 
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-		AuthMode mode = authProperties.getMode() == null ? AuthMode.SELFHOST : authProperties.getMode();
+		AuthMode mode = Objects.requireNonNull(
+				authProperties.getMode(), "prcopilot.auth.mode must not be null");
 
 		http.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 		http.csrf(AbstractHttpConfigurer::disable);

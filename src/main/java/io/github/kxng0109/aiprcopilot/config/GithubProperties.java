@@ -3,12 +3,15 @@ package io.github.kxng0109.aiprcopilot.config;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * GitHub App integration configuration.
@@ -114,6 +117,15 @@ public class GithubProperties {
          */
         @NotBlank
         private String baseUrl = "https://api.github.com";
+
+        /**
+         * Explicit allowlist of API hosts (SSRF defense). The base URL host
+         * must exactly match one entry. Defaults to {@code api.github.com};
+         * add a GitHub Enterprise Server FQDN to opt in. Binds from a
+         * comma-separated value or YAML list; a whole-list replace, never a merge.
+         */
+        @NotEmpty(message = "Allowed API hosts must not be empty")
+        private List<String> allowedHosts = new ArrayList<>(List.of("api.github.com"));
 
         /**
          * GitHub REST API version header. Current stable is

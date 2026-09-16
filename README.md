@@ -463,11 +463,12 @@ GITHUB_APP_INSTALLATION_ID=12345678
 GITHUB_WEBHOOK_SECRET=random-32+ bytes
 GITHUB_WEBHOOK_MAX_REQUEST_BYTES=1048576
 GITHUB_WEBHOOK_RATELIMITER_LIMIT_FOR_PERIOD=60
-GITHUB_API_BASE_URL=https://api.github.com   # github.com only
+GITHUB_API_BASE_URL=https://api.github.com   # must match GITHUB_API_ALLOWED_HOSTS
+GITHUB_API_ALLOWED_HOSTS=api.github.com   # comma-separated; add an Enterprise Server FQDN to opt in
 GITHUB_SARIF_CATEGORY=ai-pr-copilot
 ```
 
-Flow: webhook `POST /api/webhooks/github` (size cap 1MB via `RequestSizeLimitFilter` before HMAC, 413 on excess, `X-Request-ID` echoed only on pattern match, `@RequestBody byte[]` raw for HMAC `sha256=` + `MessageDigest.isEqual`, 403 on mismatch, `X-GitHub-Delivery` atomic dedup via `asMap().putIfAbsent` 30d, `ping` → `pong`, `github-webhook` rate limiter 60 per 1m with 429 fallback) → 202 within 10s onto bounded virtual-thread pool (4 core, 16 max, 100 queue, abort to 429 on saturation) → virtual-thread async: fetch diff (`Accept: application/vnd.github.diff`), `analyzeDiff`, post review (`line`+`side`, never deprecated `position`, `REQUEST_CHANGES` iff error-level risks) + SARIF upload (`gzip`→`base64`, `automationDetails.id` = category, poll to `complete`). JWT: `RS256`, `iss` = clientId/appId, `iat` = now-60s, `exp` = now+9m, `nimbus-jose-jwt 10.9.1` + `bcprov/bcpkix 1.84`. Tokens cached 55m (GitHub TTL 1h, stateless `ghs_APPID_JWT` format).
+Startup fails closed when `GITHUB_ENABLED=true` without a webhook secret or with a non-allowlisted base URL. Flow: webhook `POST /api/webhooks/github` (size cap 1MB via `RequestSizeLimitFilter` before HMAC, 413 on excess, `X-Request-ID` echoed only on pattern match, `@RequestBody byte[]` raw for HMAC `sha256=` + `MessageDigest.isEqual`, 403 on mismatch, `X-GitHub-Delivery` atomic dedup via `asMap().putIfAbsent` 30d, `ping` → `pong`, `github-webhook` rate limiter 60 per 1m with 429 fallback) → 202 within 10s onto bounded virtual-thread pool (4 core, 16 max, 100 queue, abort to 429 on saturation) → virtual-thread async: fetch diff (`Accept: application/vnd.github.diff`), `analyzeDiff`, post review (`line`+`side`, never deprecated `position`, `REQUEST_CHANGES` iff error-level risks) + SARIF upload (`gzip`→`base64`, `automationDetails.id` = category, poll to `complete`). JWT: `RS256`, `iss` = clientId/appId, `iat` = now-60s, `exp` = now+9m, `nimbus-jose-jwt 10.9.1` + `bcprov/bcpkix 1.84`. Tokens cached 55m (GitHub TTL 1h, stateless `ghs_APPID_JWT` format).
 
 Local dev: use a tunnel (ngrok/21tunnel) — smee.io is flaky per upstream. `DeliveryDedupStore` is in-memory Caffeine (single instance, best-effort dedup; idempotent analysis so rare double-process is safe).
 

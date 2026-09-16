@@ -43,11 +43,13 @@ class SecurityConfigUnitTest {
 	}
 
 	@Test
-	void securityFilterChain_shouldDefaultToSelfhost_whenModeNull() throws Exception {
+	void securityFilterChain_shouldThrow_whenModeNull() {
 		SecurityConfig config = new SecurityConfig(props(null, "k"));
 		HttpSecurity http = mock(HttpSecurity.class, RETURNS_DEEP_STUBS);
 
-		config.securityFilterChain(http);
+		assertThatThrownBy(() -> config.securityFilterChain(http))
+				.isInstanceOf(NullPointerException.class)
+				.hasMessageContaining("prcopilot.auth.mode");
 	}
 
 	@Test

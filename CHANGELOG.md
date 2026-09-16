@@ -16,6 +16,8 @@ and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ### Fixed
 
 - `RequestSizeLimitFilter` 413 body no longer reflects arbitrary `X-Request-ID` values (response-injection surface).
+- Fail-closed GitHub startup: enabling the integration without a webhook secret or with a non-allowlisted API base URL now aborts startup instead of failing per request; API base URL is allowlisted (default `api.github.com`, loopback plus metadata plus credentials plus non-https always rejected) with explicit Enterprise Server opt-in via `GITHUB_API_ALLOWED_HOSTS`.
+- Removed dead null-mode fallback in `SecurityConfig`; a null auth mode now fails fast instead of silently downgrading to selfhost.
 
 ## [1.1.0] - 2026-09-10
 
