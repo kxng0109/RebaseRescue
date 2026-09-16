@@ -14,8 +14,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -26,6 +29,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -335,5 +340,86 @@ class GithubApiClientTest {
         GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
 
         assertThat(client.fetchDiff("o", "r", 1)).isEqualTo("diff");
+    }
+
+    private static RestClientResponseException responseException(HttpStatus status) {
+        return new HttpClientErrorException(status);
+    }
+
+    private RestClient.ResponseSpec stubFetchDiffBody() {
+        RestClient.RequestHeadersUriSpec getSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+        when(restClient.get()).thenReturn(getSpec);
+        when(getSpec.uri(anyString(), any(Object.class), any(Object.class), any(Object.class))).thenReturn(headersSpec);
+        when(headersSpec.header(anyString(), anyString())).thenReturn(headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        return responseSpec;
+    }
+
+    @Test
+    void fetchDiff_shouldEvictAndRetryOnceOn401() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_old", "ghs_new");
+        RestClient.ResponseSpec responseSpec = stubFetchDiffBody();
+        when(responseSpec.body(any(Class.class)))
+                .thenThrow(responseException(HttpStatus.UNAUTHORIZED))
+                .thenReturn("recovered".getBytes(StandardCharsets.UTF_8));
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+
+        assertThat(client.fetchDiff("o", "r", 1, 42L)).isEqualTo("recovered");
+
+        verify(authService).evictToken(42L);
+        verify(authService, times(2)).getInstallationToken(42L);
+    }
+
+    @Test
+    void fetchDiff_shouldPropagateSecond401WithoutFurtherRetry() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_old", "ghs_new");
+        RestClient.ResponseSpec responseSpec = stubFetchDiffBody();
+        when(responseSpec.body(any(Class.class)))
+                .thenThrow(responseException(HttpStatus.UNAUTHORIZED))
+                .thenThrow(responseException(HttpStatus.UNAUTHORIZED));
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+
+        assertThatThrownBy(() -> client.fetchDiff("o", "r", 1, 42L))
+                .isInstanceOf(RestClientResponseException.class);
+
+        verify(authService, times(1)).evictToken(42L);
+        verify(authService, times(2)).getInstallationToken(42L);
+    }
+
+    @Test
+    void fetchDiff_shouldNotRetryOnNon401() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        RestClient.ResponseSpec responseSpec = stubFetchDiffBody();
+        when(responseSpec.body(any(Class.class)))
+                .thenThrow(responseException(HttpStatus.INTERNAL_SERVER_ERROR));
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+
+        assertThatThrownBy(() -> client.fetchDiff("o", "r", 1, 42L))
+                .isInstanceOf(RestClientResponseException.class);
+
+        verify(authService, never()).evictToken(any());
+        verify(authService, times(1)).getInstallationToken(42L);
+    }
+
+    @Test
+    void constructor_shouldBuildSingleSharedClient() {
+        GithubProperties p = props();
+        stubBuilder();
+        when(authService.getInstallationToken(42L)).thenReturn("ghs_test");
+        stubFetchDiff("diff");
+        GithubApiClient client = new GithubApiClient(p, authService, sarifService, objectMapper, restClientBuilder);
+
+        client.fetchDiff("o", "r", 1, 42L);
+        client.fetchDiff("o", "r", 2, 42L);
+
+        verify(restClientBuilder, times(1)).build();
     }
 }

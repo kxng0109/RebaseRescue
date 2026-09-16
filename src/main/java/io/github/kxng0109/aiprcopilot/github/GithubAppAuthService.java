@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.PrivateKey;
+import java.security.interfaces.RSAPrivateKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
@@ -47,12 +48,10 @@ public class GithubAppAuthService {
 
     public GithubAppAuthService(GithubProperties properties, RestClient.Builder restClientBuilder) {
         this.properties = properties;
-        String baseUrl = properties.getApi().getBaseUrl();
-        if (baseUrl != null && baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        }
+        String baseUrl = GithubApiHostPolicy.normalize(
+                properties.getApi().getBaseUrl(), properties.getApi().getAllowedHosts());
         this.restClient = restClientBuilder
-                .baseUrl(baseUrl != null && !baseUrl.isBlank() ? baseUrl : "https://api.github.com")
+                .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
                 .defaultHeader("X-GitHub-Api-Version", properties.getApi().getApiVersion())
                 .build();
@@ -191,15 +190,24 @@ public class GithubAppAuthService {
         } else {
             pem = trimmed.contains("\\n") ? trimmed.replace("\\n", "\n") : trimmed;
         }
+        PrivateKey privateKey;
         try {
             JWK jwk = JWK.parseFromPEMEncodedObjects(pem);
-            if (!(jwk instanceof RSAKey rsaKey)) {
+            if (!(jwk instanceof RSAKey parsed)) {
                 throw new IllegalStateException("GitHub App private key is not an RSA key");
             }
-            return rsaKey.toPrivateKey();
+            privateKey = parsed.toPrivateKey();
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to parse GitHub App private key PEM", e);
         }
+        if (privateKey instanceof RSAPrivateKey rsaPrivateKey
+                && rsaPrivateKey.getModulus().bitLength() < 2048) {
+            throw new IllegalStateException(
+                    "GitHub App private key must be at least 2048 bits");
+        }
+        return privateKey;
     }
 
     private record CachedToken(String token, Instant expiresAt) {}

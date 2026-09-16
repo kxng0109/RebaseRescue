@@ -39,8 +39,12 @@ class GithubAppAuthServiceTest {
     Path tempDir;
 
     private static String generatePem() throws Exception {
+        return generatePem(2048);
+    }
+
+    private static String generatePem(int bits) throws Exception {
         KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
-        gen.initialize(2048);
+        gen.initialize(bits);
         KeyPair pair = gen.generateKeyPair();
         String base64 = Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.UTF_8))
                 .encodeToString(pair.getPrivate().getEncoded());
@@ -259,6 +263,29 @@ class GithubAppAuthServiceTest {
         GithubAppAuthService service = new GithubAppAuthService(props, restClientBuilder);
 
         service.evictToken(null);
+    }
+
+    @Test
+    void createJwt_shouldRejectKeysBelow2048Bits() throws Exception {
+        String pem = generatePem(1024);
+        GithubProperties props = propsWithPem(pem, "123", null, 1L);
+        stubBuilder();
+        GithubAppAuthService service = new GithubAppAuthService(props, restClientBuilder);
+
+        assertThatThrownBy(service::createJwt)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("2048");
+    }
+
+    @Test
+    void constructor_shouldRejectNonAllowlistedBaseUrl() throws Exception {
+        String pem = generatePem();
+        GithubProperties props = propsWithPem(pem, "123", null, 1L);
+        props.getApi().setBaseUrl("http://evil.example.com");
+        stubBuilder();
+
+        assertThatThrownBy(() -> new GithubAppAuthService(props, restClientBuilder))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

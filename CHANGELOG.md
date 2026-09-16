@@ -18,6 +18,7 @@ and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 - `RequestSizeLimitFilter` 413 body no longer reflects arbitrary `X-Request-ID` values (response-injection surface).
 - Fail-closed GitHub startup: enabling the integration without a webhook secret or with a non-allowlisted API base URL now aborts startup instead of failing per request; API base URL is allowlisted (default `api.github.com`, loopback plus metadata plus credentials plus non-https always rejected) with explicit Enterprise Server opt-in via `GITHUB_API_ALLOWED_HOSTS`.
 - Removed dead null-mode fallback in `SecurityConfig`; a null auth mode now fails fast instead of silently downgrading to selfhost.
+- Token plus dependency resilience: BouncyCastle `1.84` to `1.86` (August-September 2026 CVE batch), RSA private keys floored at 2048 bits, installation token evicted plus refreshed with exactly one retry on API 401s, and a single shared `RestClient` per bean instead of a rebuild per call.
 
 ## [1.1.0] - 2026-09-10
 

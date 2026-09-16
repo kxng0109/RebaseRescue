@@ -7,56 +7,86 @@ import io.github.kxng0109.aiprcopilot.service.SarifService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.zip.GZIPOutputStream;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
  * GitHub REST client for diff fetch, review post, and SARIF upload.
  *
  * <p>All calls set {@code X-GitHub-Api-Version} and use the installation
- * token (or the JWT path via {@link GithubAppAuthService}). Mutative calls
- * are spaced ≥1s apart at the call site where sequencing matters.
- * Blocking calls are expected to run on virtual threads (the webhook
- * executor). Retries/backoff are caller-side; 401 triggers token eviction
- * and one retry.</p>
+ * token. A single thread-safe {@code RestClient} is built once per bean;
+ * per-request authorization headers ride each call. On 401 the cached token
+ * is evicted and the call retried exactly once; any other failure, or a
+ * second 401, propagates. Mutative calls are spaced ≥1s apart at the call
+ * site where sequencing matters. Blocking calls are expected to run on
+ * virtual threads (the webhook executor).</p>
  */
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class GithubApiClient {
 
     private final GithubProperties properties;
     private final GithubAppAuthService authService;
     private final SarifService sarifService;
     private final ObjectMapper objectMapper;
-    private final RestClient.Builder restClientBuilder;
+    private final RestClient restClient;
 
-    private RestClient restClient() {
+    public GithubApiClient(GithubProperties properties, GithubAppAuthService authService,
+            SarifService sarifService, ObjectMapper objectMapper, RestClient.Builder restClientBuilder) {
+        this.properties = properties;
+        this.authService = authService;
+        this.sarifService = sarifService;
+        this.objectMapper = objectMapper;
         String baseUrl = GithubApiHostPolicy.normalize(
                 properties.getApi().getBaseUrl(), properties.getApi().getAllowedHosts());
-        return restClientBuilder
+        this.restClient = restClientBuilder
                 .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
                 .defaultHeader("X-GitHub-Api-Version", properties.getApi().getApiVersion())
                 .build();
     }
 
-    private String bearer(Long installationId) {
+    private Long resolveInstallationId(Long installationId) {
         Long id = installationId != null ? installationId : properties.getApp().getInstallationId();
         if (id == null) {
             throw new IllegalStateException("github.app.installation-id not configured");
         }
-        return "Bearer " + authService.getInstallationToken(id);
+        return id;
+    }
+
+    /**
+     * Runs a token-authenticated call, evicting the cached token and retrying
+     * exactly once on 401. Any other failure, or a second 401, propagates.
+     *
+     * @param installationId the installation, or {@code null} for the configured default
+     * @param call the call receiving the bearer token
+     * @return the call result
+     */
+    private <T> T withTokenRefresh(Long installationId, Function<String, T> call) {
+        Long id = resolveInstallationId(installationId);
+        try {
+            return call.apply("Bearer " + authService.getInstallationToken(id));
+        } catch (RestClientResponseException e) {
+            if (e.getStatusCode().value() != HttpStatus.UNAUTHORIZED.value()) {
+                throw e;
+            }
+            log.debug("GitHub API returned 401; evicting token and retrying once");
+            authService.evictToken(id);
+            return call.apply("Bearer " + authService.getInstallationToken(id));
+        }
     }
 
     /**
@@ -72,17 +102,18 @@ public class GithubApiClient {
     }
 
     String fetchDiff(String owner, String repo, int pullNumber, Long installationId) {
-        String token = bearer(installationId);
-        byte[] body = restClient().get()
-                .uri("/repos/{owner}/{repo}/pulls/{number}", owner, repo, pullNumber)
-                .header(HttpHeaders.AUTHORIZATION, token)
-                .header(HttpHeaders.ACCEPT, "application/vnd.github.diff")
-                .retrieve()
-                .body(byte[].class);
-        if (body == null) {
-            return "";
-        }
-        return new String(body, StandardCharsets.UTF_8);
+        return withTokenRefresh(installationId, token -> {
+            byte[] body = restClient.get()
+                    .uri("/repos/{owner}/{repo}/pulls/{number}", owner, repo, pullNumber)
+                    .header(HttpHeaders.AUTHORIZATION, token)
+                    .header(HttpHeaders.ACCEPT, "application/vnd.github.diff")
+                    .retrieve()
+                    .body(byte[].class);
+            if (body == null) {
+                return "";
+            }
+            return new String(body, StandardCharsets.UTF_8);
+        });
     }
 
     /**
@@ -97,16 +128,18 @@ public class GithubApiClient {
      */
     public void postReview(String owner, String repo, int pullNumber, String commitSha,
                            AnalyzeDiffResponse analysis, Long installationId) {
-        String token = bearer(installationId);
-        Map<String, Object> body = buildReviewBody(commitSha, analysis);
-        restClient().post()
-                .uri("/repos/{owner}/{repo}/pulls/{number}/reviews", owner, repo, pullNumber)
-                .header(HttpHeaders.AUTHORIZATION, token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .toBodilessEntity();
-        log.info("GitHub review posted for {}/{}#{} commit {}", owner, repo, pullNumber, commitSha);
+        withTokenRefresh(installationId, token -> {
+            Map<String, Object> body = buildReviewBody(commitSha, analysis);
+            restClient.post()
+                    .uri("/repos/{owner}/{repo}/pulls/{number}/reviews", owner, repo, pullNumber)
+                    .header(HttpHeaders.AUTHORIZATION, token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("GitHub review posted for {}/{}#{} commit {}", owner, repo, pullNumber, commitSha);
+            return null;
+        });
     }
 
     /**
@@ -121,8 +154,8 @@ public class GithubApiClient {
      */
     public void uploadSarif(String owner, String repo, String commitSha, String ref,
                             AnalyzeDiffResponse analysis, Long installationId) {
-        String token = bearer(installationId);
-        Map<String, Object> sarifDoc = sarifService.toSarif(analysis);
+        withTokenRefresh(installationId, token -> {
+            Map<String, Object> sarifDoc = sarifService.toSarif(analysis);
         // Ensure automationDetails.id carries the configured category for GitHub's
         // post-June-2025 multi-run rejection (distinct tool+category per upload).
         String category = properties.getSarif().getCategory();
@@ -159,7 +192,7 @@ public class GithubApiClient {
         payload.put("sarif", encoded);
         // tool_name defaults to API; keep SARIF driver name as filter key
         @SuppressWarnings("unchecked")
-        Map<String, Object> response = restClient().post()
+        Map<String, Object> response = restClient.post()
                 .uri("/repos/{owner}/{repo}/code-scanning/sarifs", owner, repo)
                 .header(HttpHeaders.AUTHORIZATION, token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -171,6 +204,8 @@ public class GithubApiClient {
         if (sarifId != null) {
             pollSarif(owner, repo, sarifId.toString(), token);
         }
+        return null;
+        });
     }
 
     private void pollSarif(String owner, String repo, String sarifId, String token) {
@@ -183,7 +218,7 @@ public class GithubApiClient {
             }
             try {
                 @SuppressWarnings("unchecked")
-                Map<String, Object> status = restClient().get()
+                Map<String, Object> status = restClient.get()
                         .uri("/repos/{owner}/{repo}/code-scanning/sarifs/{id}", owner, repo, sarifId)
                         .header(HttpHeaders.AUTHORIZATION, token)
                         .retrieve()
@@ -221,7 +256,7 @@ public class GithubApiClient {
         List<RiskItem> risks = analysis.risks() == null ? List.of() : analysis.risks();
         List<String> touched = analysis.touchedFiles() == null ? List.of() : analysis.touchedFiles();
         String targetPath = touched.isEmpty() ? null : touched.get(0);
-        List<Map<String, Object>> comments = new java.util.ArrayList<>();
+        List<Map<String, Object>> comments = new ArrayList<>();
         for (RiskItem risk : risks) {
             if (risk.message() == null || risk.message().isBlank()) {
                 continue;
