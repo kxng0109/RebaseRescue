@@ -7,11 +7,13 @@ import io.github.kxng0109.aiprcopilot.config.PrCopilotSarifProperties;
 import io.github.kxng0109.aiprcopilot.error.DiffTooLargeException;
 import io.github.kxng0109.aiprcopilot.service.SarifService;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -435,9 +437,9 @@ class GithubApiClientTest {
         sarifDoc.put("runs", null);
         when(sarifService.toSarif(any())).thenReturn(sarifDoc);
         stubUploadPost(Map.of("id", "sarif-1"));
-        stubPollGet(
+        stubPollGet(List.of(
                 Map.of("processing_status", "pending"),
-                Map.of("processing_status", "complete"));
+                Map.of("processing_status", "complete")));
         GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
@@ -458,7 +460,7 @@ class GithubApiClientTest {
         sarifDoc.put("runs", null);
         when(sarifService.toSarif(any())).thenReturn(sarifDoc);
         stubUploadPost(Map.of("id", "sarif-2"));
-        stubPollGet(Map.of("processing_status", "failed", "errors", List.of("bad")));
+        stubPollGet(List.of(Map.of("processing_status", "failed", "errors", List.of("bad"))));
         GithubApiClient client = new GithubApiClient(p, authService, sarifService, sarifProperties, objectMapper, restClientBuilder);
 
         AnalyzeDiffResponse analysis = AnalyzeDiffResponse.builder().title("t").build();
@@ -517,7 +519,7 @@ class GithubApiClientTest {
     private RestClient.RequestBodySpec lastUploadBodySpec;
 
     @SuppressWarnings("unchecked")
-    private RestClient.ResponseSpec stubPollGet(Map<String, Object> first, Map<String, Object>... rest) {
+    private RestClient.ResponseSpec stubPollGet(List<Map<String, Object>> responses) {
         RestClient.RequestHeadersUriSpec getSpec = mock(RestClient.RequestHeadersUriSpec.class);
         RestClient.RequestHeadersSpec headersSpec = mock(RestClient.RequestHeadersSpec.class);
         RestClient.ResponseSpec pollSpec = mock(RestClient.ResponseSpec.class);
@@ -525,7 +527,8 @@ class GithubApiClientTest {
         when(getSpec.uri(anyString(), any(Object.class), any(Object.class), any(Object.class))).thenReturn(headersSpec);
         when(headersSpec.header(anyString(), anyString())).thenReturn(headersSpec);
         when(headersSpec.retrieve()).thenReturn(pollSpec);
-        when(pollSpec.body(any(Class.class))).thenReturn(first, rest);
+        Queue<Map<String, Object>> queue = new ArrayDeque<>(responses);
+        when(pollSpec.body(any(Class.class))).thenAnswer(invocation -> queue.poll());
         lastPollSpec = pollSpec;
         return pollSpec;
     }
