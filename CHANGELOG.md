@@ -6,6 +6,12 @@ and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-16
+
+### Fixed
+
+- Release image: upgrade Alpine packages at build time (`apk upgrade`), pulling expat `2.8.4-r0`, musl `1.2.6-r2`, and openssl `3.5.8-r0`, which clears the libexpat `CVE-2026-66046` image-gate finding plus the three previously accepted OS findings; `.trivyignore` returns to intentionally empty.
+
 ## [1.2.0] - 2026-09-16
 
 ### Added

@@ -48,8 +48,12 @@ LABEL org.opencontainers.image.source="https://github.com/kxng0109/ai-pr-copilot
 
 WORKDIR /app
 
-# Install required packages for health checks
-RUN apk add --no-cache wget
+# Install required packages for health checks. Upgrade first: the digest-pinned
+# base carries stale Alpine packages (expat, musl, openssl) with fixed CVEs
+# available upstream. Upgrading at build time is intentional (security over
+# bit-reproducibility); the base digest pin stays for provenance.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache wget
 
 # Create non-root user for security
 RUN addgroup -S appgroup && \

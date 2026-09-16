@@ -59,7 +59,7 @@ Stack: Java 25 · Spring Boot 4.1.1 · Spring AI 2.0.1 · Jackson 3 (ISO-8601 da
 Spring Security 7 (OIDC in `prod`, API key in `selfhost`) · Picocli 4.7.7
 (Boot-4 factory vendored in `cli.picocli4`) · springdoc 3.1.0.
 
-Versioning: single source is `pom.xml` `project/version` (current `1.2.0`).
+Versioning: single source is `pom.xml` `project/version` (current `1.2.1`).
 It propagates to `application.yml` (`info.project.version`,
 `spring.application.version` via `@project.version@` resource filtering),
 `config.AppInfo` (code), Docker label/tag (`APP_VERSION` build arg,

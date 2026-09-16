@@ -10,7 +10,7 @@
     </parent>
     <groupId>io.github.kxng0109</groupId>
     <artifactId>ai-pr-copilot</artifactId>
-    <version>1.2.0</version>
+    <version>1.2.1</version>
     <name>AI PR Copilot</name>
     <description>AI PR Copilot</description>
     <properties>

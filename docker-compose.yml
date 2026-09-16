@@ -3,8 +3,8 @@ services:
     build:
       context: .
       args:
-        APP_VERSION: ${APP_VERSION:-1.2.0}
-    image: ai-pr-copilot:${APP_VERSION:-1.2.0}
+        APP_VERSION: ${APP_VERSION:-1.2.1}
+    image: ai-pr-copilot:${APP_VERSION:-1.2.1}
     container_name: ai-pr-copilot
     ports:
       - "8080:8080"
