@@ -417,12 +417,28 @@ jobs:
           name: signed-${{ needs.validate.outputs.version }}
           path: target
 
+      - name: Determine changelog range
+        id: cliff-range
+        run: |
+          TAG="${{ github.ref_name }}"
+          # --current renders nothing when HEAD is exactly the tag (no commits
+          # after it), which published empty notes. Use the explicit tag range
+          # instead: deterministic regardless of checkout position.
+          if PREV_TAG="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null)"; then
+            echo "args=--tag ${TAG} ${PREV_TAG}..${TAG} --strip header -o CHANGELOG-current.md" >> "$GITHUB_OUTPUT"
+            echo "previous=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=--tag ${TAG} --strip header -o CHANGELOG-current.md" >> "$GITHUB_OUTPUT"
+            echo "previous=" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Changelog range: ${PREV_TAG:-<beginning>}..${TAG}"
+
       - name: Generate conventional changelog
         id: cliff
         uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4
         with:
           config: cliff.toml
-          args: --current --strip header -o CHANGELOG-current.md
+          args: ${{ steps.cliff-range.outputs.args }}
 
       - name: Assemble release notes
         run: |
@@ -444,7 +460,17 @@ jobs:
             echo ""
             echo "### Changes"
             echo ""
-            cat CHANGELOG-current.md 2>/dev/null || echo "${{ steps.cliff.outputs.content }}"
+            # -s guards the previous silent failure: cat of an empty file
+            # succeeds and hid the empty notes. Compare link is the last resort.
+            if [ -s CHANGELOG-current.md ]; then
+              cat CHANGELOG-current.md
+            elif [ -n "${{ steps.cliff.outputs.content }}" ]; then
+              echo "${{ steps.cliff.outputs.content }}"
+            elif [ -n "${{ steps.cliff-range.outputs.previous }}" ]; then
+              echo "See the full commit list: https://github.com/${{ github.repository }}/compare/${{ steps.cliff-range.outputs.previous }}...${{ github.ref_name }}"
+            else
+              echo "See the full commit list: https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}"
+            fi
           } > release-notes.md
           cat release-notes.md
 
