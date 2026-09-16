@@ -9,6 +9,7 @@ import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -27,7 +28,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Byte-level request body cap for {@code /api/v1/**} JSON endpoints.
+ * Byte-level request body cap for {@code /api/v1/**} JSON endpoints and the
+ * GitHub webhook at {@code /api/webhooks/github}.
  *
  * <p>Tomcat's {@code max-swallow-size}/{@code max-http-form-post-size} and Spring's
  * {@code spring.servlet.multipart.max-request-size} do not apply to JSON bodies, so without this filter a
@@ -36,7 +38,7 @@ import java.util.Map;
  *
  * <ol>
  *   <li>Fast path: when {@code Content-Length} is present and exceeds
- *       {@code prcopilot.analysis.max-request-bytes}, respond 413 immediately without
+ *       the applicable cap, respond 413 immediately without
  *       reading the body.</li>
  *   <li>Chunked/unknown length: wrap the input stream with a counting stream that throws
  *       {@link DiffTooLargeException} once the cap is exceeded, which the MVC exception
@@ -45,7 +47,8 @@ import java.util.Map;
  *
  * <p>Runs at {@link Ordered#HIGHEST_PRECEDENCE} so oversized bodies are rejected before
  * authentication and deserialization work begins. The 413 body matches the
- * {@code ErrorResponse} shape.
+ * {@code ErrorResponse} shape. Request IDs are echoed only when they match
+ * the shared correlation pattern.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -53,12 +56,18 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
 
 	private static final String API_PREFIX = "/api/v1/";
 
+	private static final String WEBHOOK_PREFIX = "/api/webhooks/github";
+
 	private final PrCopilotAnalysisProperties analysisProperties;
+
+	private final ObjectProvider<GithubProperties> githubPropertiesProvider;
 
 	private final ObjectMapper objectMapper;
 
-	public RequestSizeLimitFilter(PrCopilotAnalysisProperties analysisProperties, ObjectMapper objectMapper) {
+	public RequestSizeLimitFilter(PrCopilotAnalysisProperties analysisProperties,
+			ObjectProvider<GithubProperties> githubPropertiesProvider, ObjectMapper objectMapper) {
 		this.analysisProperties = analysisProperties;
+		this.githubPropertiesProvider = githubPropertiesProvider;
 		this.objectMapper = objectMapper;
 	}
 
@@ -67,14 +76,18 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
 		if (!"POST".equalsIgnoreCase(request.getMethod())) {
 			return true;
 		}
-		return !effectivePath(request).startsWith(API_PREFIX);
+		String path = effectivePath(request);
+		if (path.startsWith(API_PREFIX)) {
+			return false;
+		}
+		return !isWebhookPath(path);
 	}
 
 	@Override
 	protected void doFilterInternal(
 			HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
 			throws ServletException, IOException {
-		long maxBytes = analysisProperties.getMaxRequestBytes();
+		long maxBytes = resolveCap(request);
 
 		if (request.getContentLengthLong() > maxBytes) {
 			writePayloadTooLarge(request, response);
@@ -90,6 +103,20 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
 			}
 			throw ex;
 		}
+	}
+
+	private static boolean isWebhookPath(String path) {
+		return path.equals(WEBHOOK_PREFIX) || path.startsWith(WEBHOOK_PREFIX + "/");
+	}
+
+	private long resolveCap(HttpServletRequest request) {
+		if (isWebhookPath(effectivePath(request))) {
+			GithubProperties githubProperties = githubPropertiesProvider.getIfAvailable();
+			if (githubProperties != null && githubProperties.getWebhook() != null) {
+				return githubProperties.getWebhook().getMaxRequestBytes();
+			}
+		}
+		return analysisProperties.getMaxRequestBytes();
 	}
 
 	private static String effectivePath(HttpServletRequest request) {
@@ -127,7 +154,7 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
 		body.put("message", "Request body exceeded maximum allowed size");
 		body.put("path", request.getRequestURI());
 		String requestId = request.getHeader(ErrorResponse.REQUEST_ID_HEADER);
-		if (requestId != null && !requestId.isBlank()) {
+		if (requestId != null && requestId.matches(ErrorResponse.REQUEST_ID_PATTERN)) {
 			body.put("requestId", requestId);
 		} else {
 			body.put("requestId", null);

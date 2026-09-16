@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.DelegatingServletInputStream;
@@ -36,6 +37,15 @@ class RequestSizeLimitFilterTest {
 	private PrCopilotAnalysisProperties analysisProperties;
 
 	@Mock
+	private GithubProperties githubProperties;
+
+	@Mock
+	private GithubProperties.Webhook webhookProperties;
+
+	@Mock
+	private ObjectProvider<GithubProperties> githubProvider;
+
+	@Mock
 	private FilterChain filterChain;
 
 	private final ObjectMapper objectMapper = JsonMapper.builder().build();
@@ -45,7 +55,10 @@ class RequestSizeLimitFilterTest {
 	@BeforeEach
 	void setup() {
 		lenient().when(analysisProperties.getMaxRequestBytes()).thenReturn(MAX_BYTES);
-		filter = new RequestSizeLimitFilter(analysisProperties, objectMapper);
+		lenient().when(githubProvider.getIfAvailable()).thenReturn(githubProperties);
+		lenient().when(githubProperties.getWebhook()).thenReturn(webhookProperties);
+		lenient().when(webhookProperties.getMaxRequestBytes()).thenReturn(50L);
+		filter = new RequestSizeLimitFilter(analysisProperties, githubProvider, objectMapper);
 	}
 
 	@Test
@@ -354,6 +367,61 @@ class RequestSizeLimitFilterTest {
 		assertThat(decoded.toString()).isEqualTo("hi");
 	}
 
+	@Test
+	void shouldReject413_whenWebhookContentLengthExceedsCap() throws Exception {
+		MockHttpServletRequest request = webhookRequest("x".repeat(51));
+		MockHttpServletResponse response = new MockHttpServletResponse();
+
+		filter.doFilter(request, response, filterChain);
+
+		verify(filterChain, never()).doFilter(any(), any());
+		assertThat(response.getStatus()).isEqualTo(HttpStatus.CONTENT_TOO_LARGE.value());
+	}
+
+	@Test
+	void shouldReject413_whenWebhookChunkedBodyExceedsCap() throws Exception {
+		HttpServletRequest request = webhookChunkedRequest("y".repeat(60));
+		MockHttpServletResponse response = new MockHttpServletResponse();
+		doAnswer(invocation -> {
+			HttpServletRequest wrapped = invocation.getArgument(0);
+			wrapped.getInputStream().readAllBytes();
+			return null;
+		}).when(filterChain).doFilter(any(), any());
+
+		filter.doFilter(request, response, filterChain);
+
+		assertThat(response.getStatus()).isEqualTo(HttpStatus.CONTENT_TOO_LARGE.value());
+	}
+
+	@Test
+	void shouldPassThrough_whenWebhookBodyWithinCap() throws Exception {
+		MockHttpServletRequest request = webhookRequest("{\"action\":\"opened\"}");
+		MockHttpServletResponse response = new MockHttpServletResponse();
+
+		filter.doFilter(request, response, filterChain);
+
+		verify(filterChain).doFilter(any(), any());
+		assertThat(response.getStatus()).isEqualTo(HttpStatus.OK.value());
+	}
+
+	@Test
+	void shouldOmitRequestId_whenHeaderFailsPattern() throws Exception {
+		HttpServletRequest request = chunkedRequest("y".repeat(150));
+		when(request.getHeader(any())).thenReturn("bad\ninjection<script>");
+		MockHttpServletResponse response = new MockHttpServletResponse();
+		doAnswer(invocation -> {
+			HttpServletRequest wrapped = invocation.getArgument(0);
+			wrapped.getInputStream().readAllBytes();
+			return null;
+		}).when(filterChain).doFilter(any(), any());
+
+		filter.doFilter(request, response, filterChain);
+
+		assertThat(response.getStatus()).isEqualTo(HttpStatus.CONTENT_TOO_LARGE.value());
+		assertThat(response.getContentAsString()).contains("\"requestId\":null");
+		assertThat(response.getContentAsString()).doesNotContain("injection");
+	}
+
 	private static MockHttpServletRequest apiRequest(String body) {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.setMethod("POST");
@@ -368,6 +436,30 @@ class RequestSizeLimitFilterTest {
 		HttpServletRequest request = mock(HttpServletRequest.class);
 		when(request.getMethod()).thenReturn("POST");
 		when(request.getRequestURI()).thenReturn("/api/v1/analyze-diff");
+		lenient().when(request.getContextPath()).thenReturn("");
+		when(request.getContentLengthLong()).thenReturn(-1L);
+		lenient().when(request.getCharacterEncoding()).thenReturn(StandardCharsets.UTF_8.name());
+		lenient().when(request.getHeader(any())).thenReturn(null);
+		ServletInputStream backing =
+				new DelegatingServletInputStream(new ByteArrayInputStream(bytes));
+		lenient().when(request.getInputStream()).thenReturn(backing);
+		return request;
+	}
+
+	private static MockHttpServletRequest webhookRequest(String body) {
+		MockHttpServletRequest request = new MockHttpServletRequest();
+		request.setMethod("POST");
+		request.setRequestURI("/api/webhooks/github");
+		request.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		request.setContent(body.getBytes(StandardCharsets.UTF_8));
+		return request;
+	}
+
+	private static HttpServletRequest webhookChunkedRequest(String body) throws Exception {
+		byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+		HttpServletRequest request = mock(HttpServletRequest.class);
+		when(request.getMethod()).thenReturn("POST");
+		when(request.getRequestURI()).thenReturn("/api/webhooks/github");
 		lenient().when(request.getContextPath()).thenReturn("");
 		when(request.getContentLengthLong()).thenReturn(-1L);
 		lenient().when(request.getCharacterEncoding()).thenReturn(StandardCharsets.UTF_8.name());

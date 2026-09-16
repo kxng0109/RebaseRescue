@@ -86,6 +86,28 @@ prcopilot:
     # Path to repo-local false-positive suppress file (empty = no suppression)
     suppress-file: ${PRCOPILOT_SUPPRESS_FILE:.ai-review-ignore.yml}
 
+github:
+  enabled: ${GITHUB_ENABLED:false}
+  app:
+    app-id: ${GITHUB_APP_ID:}
+    client-id: ${GITHUB_APP_CLIENT_ID:}
+    private-key: ${GITHUB_APP_PRIVATE_KEY:}
+    installation-id: ${GITHUB_APP_INSTALLATION_ID:}
+  webhook:
+    secret: ${GITHUB_WEBHOOK_SECRET:}
+    dedup-ttl: ${GITHUB_WEBHOOK_DEDUP_TTL:30d}
+    dedup-max-size: ${GITHUB_WEBHOOK_DEDUP_MAX_SIZE:100000}
+    # Hard byte ceiling on webhook JSON bodies, enforced before HMAC work (min 1024).
+    # Deliveries are metadata only; diff is fetched separately, so 1MB is generous.
+    max-request-bytes: ${GITHUB_WEBHOOK_MAX_REQUEST_BYTES:1048576}
+  api:
+    base-url: ${GITHUB_API_BASE_URL:https://api.github.com}
+    api-version: ${GITHUB_API_VERSION:2026-03-10}
+    token-cache-ttl: ${GITHUB_TOKEN_CACHE_TTL:55m}
+    token-cache-max-size: ${GITHUB_TOKEN_CACHE_MAX_SIZE:100}
+  sarif:
+    category: ${GITHUB_SARIF_CATEGORY:ai-pr-copilot}
+
 spring:
   threads:
     virtual:
@@ -155,6 +177,10 @@ resilience4j:
         limitForPeriod: ${PRCOPILOT_RATELIMITER_LIMIT_FOR_PERIOD:30}
         limitRefreshPeriod: ${PRCOPILOT_RATELIMITER_REFRESH_PERIOD:1m}
         timeoutDuration: ${PRCOPILOT_RATELIMITER_TIMEOUT_MILLIS:0}ms
+      github-webhook:
+        limitForPeriod: ${GITHUB_WEBHOOK_RATELIMITER_LIMIT_FOR_PERIOD:60}
+        limitRefreshPeriod: ${GITHUB_WEBHOOK_RATELIMITER_REFRESH_PERIOD:1m}
+        timeoutDuration: ${GITHUB_WEBHOOK_RATELIMITER_TIMEOUT_MILLIS:0}ms
 
 logging:
   level:

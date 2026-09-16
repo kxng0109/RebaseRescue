@@ -9,7 +9,8 @@ import org.springframework.context.annotation.Configuration;
 		PrCopilotLoggingProperties.class,
 		MultiAiConfigurationProperties.class,
 		PrCopilotAuthProperties.class,
-		PrCopilotSarifProperties.class
+		PrCopilotSarifProperties.class,
+		GithubProperties.class
 })
 public class PrCopilotConfig {
 }

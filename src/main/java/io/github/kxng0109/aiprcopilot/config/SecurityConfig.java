@@ -53,7 +53,8 @@ public class SecurityConfig {
 				                                       "/api-docs/**",
 				                                       "/v3/api-docs/**",
 				                                       "/swagger-ui/**",
-				                                       "/swagger-ui.html"
+				                                       "/swagger-ui.html",
+				                                       "/api/webhooks/github"
 		                                       )
 		                                       .permitAll()
 		                                       .requestMatchers(HttpMethod.POST, "/api/v1/**")
