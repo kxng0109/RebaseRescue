@@ -1,9 +1,9 @@
-# AI PR Copilot
+# RebaseRescue
 
 A self hosted AI powered code audit and pull request analysis service with multi provider support. This REST API
 analyzes Git diffs using language models to provide structured reviews, identify risks, and suggest test cases.
 
-[![CI](https://github.com/kxng0109/AI-PR-Copilot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kxng0109/AI-PR-Copilot/actions/workflows/ci.yml)
+[![CI](https://github.com/kxng0109/RebaseRescue/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kxng0109/RebaseRescue/actions/workflows/ci.yml)
 
 > Note: This project is under active development. Features and APIs may change as the project evolves.
 
@@ -59,7 +59,7 @@ Stack: Java 25 · Spring Boot 4.1.1 · Spring AI 2.0.1 · Jackson 3 (ISO-8601 da
 Spring Security 7 (OIDC in `prod`, API key in `selfhost`) · Picocli 4.7.7
 (Boot-4 factory vendored in `cli.picocli4`) · springdoc 3.1.0.
 
-Versioning: single source is `pom.xml` `project/version` (current `1.2.1`).
+Versioning: single source is `pom.xml` `project/version` (current `2.0.0`).
 It propagates to `application.yml` (`info.project.version`,
 `spring.application.version` via `@project.version@` resource filtering),
 `config.AppInfo` (code), Docker label/tag (`APP_VERSION` build arg,
@@ -78,8 +78,8 @@ bump both together; Docker image/Compose default to the same version.
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/kxng0109/ai-pr-copilot.git
-cd ai-pr-copilot
+git clone https://github.com/kxng0109/RebaseRescue.git
+cd RebaseRescue
 ```
 
 ### Configuration
@@ -220,7 +220,7 @@ curl -X POST http://localhost:8080/api/v1/analyze-diff \
 - Content Type out: `application/sarif+json` (SARIF 2.1.0)
 - Same analysis, stable `ruleId` (`APR-<hash>`), `primaryLocationLineHash` fingerprints,
   `runAutomationDetails.id` category. Upload to GitHub Code Scanning
-  (`github/codeql-action/upload-sarif`, `category: ai-pr-copilot`) or SonarQube
+  (`github/codeql-action/upload-sarif`, `category: rebase-rescue`) or SonarQube
   (`sonar.sarifReportPaths`). Findings below `PRCOPILOT_GATE_MIN_LEVEL`
   (`note|warning|error`) are filtered at emit time; entries in
   `PRCOPILOT_SUPPRESS_FILE` (default `.ai-review-ignore.yml`, YAML list of
@@ -284,8 +284,8 @@ SPRING_HTTP_CLIENTS_READ_TIMEOUT=40s
 JAVA_MAX_RAM_PERCENTAGE=70
 ```
 
-Prometheus metrics at `/actuator/prometheus`: `aiprcopilot.analysis.duration`
-(`provider`, `outcome`), `aiprcopilot.analysis.cache` (`hit|miss`).
+Prometheus metrics at `/actuator/prometheus`: `rebaserescue.analysis.duration`
+(`provider`, `outcome`), `rebaserescue.analysis.cache` (`hit|miss`).
 
 ### Images
 
@@ -395,7 +395,7 @@ Deny-by-default. Public only: `/actuator/health`, `/actuator/info`, `/api-docs/*
 - `prod` (enterprise): OIDC JWT required, fail-closed with no default issuer.
   ```bash
   PRCOPILOT_AUTH_MODE=prod
-  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://auth.example.com/realms/ai-pr-copilot
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://auth.example.com/realms/rebase-rescue
   ```
 
 ## Health Checks
@@ -471,7 +471,7 @@ GITHUB_WEBHOOK_MAX_REQUEST_BYTES=1048576
 GITHUB_WEBHOOK_RATELIMITER_LIMIT_FOR_PERIOD=60
 GITHUB_API_BASE_URL=https://api.github.com   # must match GITHUB_API_ALLOWED_HOSTS
 GITHUB_API_ALLOWED_HOSTS=api.github.com   # comma-separated; add an Enterprise Server FQDN to opt in
-GITHUB_SARIF_CATEGORY=ai-pr-copilot
+GITHUB_SARIF_CATEGORY=rebase-rescue
 ```
 
 Startup fails closed when `GITHUB_ENABLED=true` without a webhook secret or with a non-allowlisted base URL. Flow: webhook `POST /api/webhooks/github` (size cap 1MB via `RequestSizeLimitFilter` before HMAC, 413 on excess, `X-Request-ID` echoed only on pattern match, `@RequestBody byte[]` raw for HMAC `sha256=` + `MessageDigest.isEqual`, 403 on mismatch, `X-GitHub-Delivery` atomic dedup via `asMap().putIfAbsent` 30d, `ping` → `pong`, `github-webhook` rate limiter 60 per 1m with 429 fallback) → 202 within 10s onto bounded virtual-thread pool (4 core, 16 max, 100 queue, abort to 429 on saturation) → virtual-thread async: fetch diff (`Accept: application/vnd.github.diff`), `analyzeDiff`, post review (`line`+`side`, never deprecated `position`, `REQUEST_CHANGES` iff error-level risks) + SARIF upload (`gzip`→`base64`, 5MB budget via `PRCOPILOT_SARIF_MAX_BYTES`, `automationDetails.id` = category, poll survives transients to `complete`). JWT: `RS256` (keys floored at 2048 bits), `iss` = clientId/appId, `iat` = now-60s, `exp` = now+9m, `nimbus-jose-jwt 10.9.1` + `bcprov/bcpkix 1.86`. Tokens cached 55m (GitHub TTL 1h, stateless `ghs_APPID_JWT` format); API calls share one `RestClient` and retry once after token eviction on 401.
@@ -510,7 +510,8 @@ obfuscation 3/3, injection 3/5.
 
 ## License
 
-This project is under active development. License information will be added in a future release.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.
+Copyright 2026 Joshua Ike.
 
 ---
 Project Status: Active Development. For questions or issues, please open an issue on the repository.

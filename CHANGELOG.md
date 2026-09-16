@@ -6,6 +6,12 @@ and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-16
+
+### Changed (breaking)
+
+- Renamed AI PR Copilot to RebaseRescue across artifact coordinates (`rebase-rescue`), Java packages, CLI identity, container image, SARIF category defaults, and metrics. `PRCOPILOT_*` env and `prcopilot.*` property prefixes are unchanged. History below keeps the old name.
+
 ## [1.2.1] - 2026-09-16
 
 ### Fixed

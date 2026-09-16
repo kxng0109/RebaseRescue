@@ -57,4 +57,4 @@ spring:
         model: qwen3:4b
 
   application:
-    name: ai-pr-copilot-test
+    name: rebase-rescue-test

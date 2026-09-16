@@ -10,7 +10,7 @@ management:
 
 info:
   project:
-    name: AI PR Copilot
+    name: RebaseRescue
     description: "Self-hosted AI-powered code audit and PR analysis service with multi-provider support"
     version: "@project.version@"
 
@@ -85,7 +85,7 @@ prcopilot:
   sarif:
     # SARIF consumer this output targets: github (Code Scanning) or sonar
     consumer: ${PRCOPILOT_SARIF_CONSUMER:github}
-    category: ${PRCOPILOT_SARIF_CATEGORY:ai-pr-copilot}
+    category: ${PRCOPILOT_SARIF_CATEGORY:rebase-rescue}
     # Path to repo-local false-positive suppress file (empty = no suppression)
     suppress-file: ${PRCOPILOT_SUPPRESS_FILE:.ai-review-ignore.yml}
     # Maximum serialized SARIF bytes accepted for upload (GitHub caps at 10MB gzipped)
@@ -114,7 +114,7 @@ github:
     token-cache-ttl: ${GITHUB_TOKEN_CACHE_TTL:55m}
     token-cache-max-size: ${GITHUB_TOKEN_CACHE_MAX_SIZE:100}
   sarif:
-    category: ${GITHUB_SARIF_CATEGORY:ai-pr-copilot}
+    category: ${GITHUB_SARIF_CATEGORY:rebase-rescue}
 
 spring:
   threads:
@@ -153,7 +153,7 @@ spring:
         model: ${OLLAMA_MODEL:qwen3:4b}
 
   application:
-    name: ai-pr-copilot
+    name: rebase-rescue
     version: "@project.version@"
 
   security:
@@ -193,4 +193,4 @@ resilience4j:
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:info}
-    io.github.kxng0109.aiprcopilot: ${LOG_LEVEL_KXNG:info}
+    io.github.kxng0109.rebaserescue: ${LOG_LEVEL_KXNG:info}

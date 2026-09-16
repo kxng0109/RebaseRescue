@@ -1,11 +1,11 @@
 services:
-  ai-pr-copilot:
+  rebase-rescue:
     build:
       context: .
       args:
-        APP_VERSION: ${APP_VERSION:-1.2.1}
-    image: ai-pr-copilot:${APP_VERSION:-1.2.1}
-    container_name: ai-pr-copilot
+        APP_VERSION: ${APP_VERSION:-2.0.0}
+    image: rebase-rescue:${APP_VERSION:-2.0.0}
+    container_name: rebase-rescue
     ports:
       - "8080:8080"
     environment:

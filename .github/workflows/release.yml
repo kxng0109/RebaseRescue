@@ -170,11 +170,11 @@ jobs:
       - name: Rename artifacts deterministically
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          TARGET="target/ai-pr-copilot-${VERSION}.jar"
+          TARGET="target/rebase-rescue-${VERSION}.jar"
           # Spring Boot leaves a '<artifact>-<version>.jar.original' alongside
           # the repackaged fat JAR, so the bare glob must exclude it.
           shopt -s nullglob
-          for f in target/ai-pr-copilot-*.jar; do
+          for f in target/rebase-rescue-*.jar; do
             case "$f" in
               *.original) continue ;;
               *) [ "$f" != "$TARGET" ] && mv "$f" "$TARGET"; break ;;
@@ -185,16 +185,16 @@ jobs:
           # Spring Boot's META-INF/sbom is optional: its presence for
           # Boot 4.1 could not be verified from the docs, so never let a
           # missing file fail the build.
-          cp target/bom.json "target/ai-pr-copilot-${VERSION}-cyclonedx-aggregate.json" 2>/dev/null || echo "WARN: target/bom.json not found"
-          cp target/bom.xml "target/ai-pr-copilot-${VERSION}-cyclonedx-aggregate.xml" 2>/dev/null || echo "WARN: target/bom.xml not found"
+          cp target/bom.json "target/rebase-rescue-${VERSION}-cyclonedx-aggregate.json" 2>/dev/null || echo "WARN: target/bom.json not found"
+          cp target/bom.xml "target/rebase-rescue-${VERSION}-cyclonedx-aggregate.xml" 2>/dev/null || echo "WARN: target/bom.xml not found"
           if [ -f target/classes/META-INF/sbom/application.cdx.json ]; then
-            cp target/classes/META-INF/sbom/application.cdx.json "target/ai-pr-copilot-${VERSION}-cyclonedx.json"
+            cp target/classes/META-INF/sbom/application.cdx.json "target/rebase-rescue-${VERSION}-cyclonedx.json"
           else
             echo "WARN: Spring Boot META-INF/sbom not present; skipping embedded BOM asset"
           fi
           cd target
-          sha256sum "ai-pr-copilot-${VERSION}.jar" > "ai-pr-copilot-${VERSION}.jar.sha256"
-          sha256sum -c "ai-pr-copilot-${VERSION}.jar.sha256"
+          sha256sum "rebase-rescue-${VERSION}.jar" > "rebase-rescue-${VERSION}.jar.sha256"
+          sha256sum -c "rebase-rescue-${VERSION}.jar.sha256"
 
       - name: Smoke test (actuator health with dummy key)
         run: |
@@ -205,7 +205,7 @@ jobs:
           # the context fails to start, so set it explicitly for the smoke run.
           OPENAI_API_KEY=dummy-smoke-key PRCOPILOT_API_KEY=dummy-smoke-key \
           SPRING_AI_MODEL_CHAT=openai GOOGLE_GENAI_PROJECT_ID=dummy-smoke-project GOOGLE_GENAI_LOCATION=us-central1 \
-            java -jar "target/ai-pr-copilot-${VERSION}.jar" > smoke.log 2>&1 &
+            java -jar "target/rebase-rescue-${VERSION}.jar" > smoke.log 2>&1 &
           PID=$!
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then
@@ -220,10 +220,10 @@ jobs:
         with:
           name: dist-${{ needs.validate.outputs.version }}
           path: |
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}.jar
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}.jar.sha256
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}-cyclonedx-aggregate.json
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}-cyclonedx-aggregate.xml
+            target/rebase-rescue-${{ needs.validate.outputs.version }}.jar
+            target/rebase-rescue-${{ needs.validate.outputs.version }}.jar.sha256
+            target/rebase-rescue-${{ needs.validate.outputs.version }}-cyclonedx-aggregate.json
+            target/rebase-rescue-${{ needs.validate.outputs.version }}-cyclonedx-aggregate.xml
           if-no-files-found: error
           retention-days: 7
 
@@ -283,7 +283,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ghcr.io/${{ github.repository_owner }}/ai-pr-copilot
+          images: ghcr.io/${{ github.repository_owner }}/rebase-rescue
           flavor: latest=auto
           tags: |
             type=semver,pattern={{version}}
@@ -303,14 +303,14 @@ jobs:
           build-args: |
             APP_VERSION=${{ needs.validate.outputs.version }}
             AOTCACHE_ENABLED=1
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-pr-copilot:latest
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/rebase-rescue:latest
           cache-to: type=inline
 
       - name: Trivy image gate (HIGH/CRITICAL block)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.74.0
-          image-ref: ghcr.io/${{ github.repository_owner }}/ai-pr-copilot@${{ steps.push.outputs.digest }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/rebase-rescue@${{ steps.push.outputs.digest }}
           vuln-type: os,library
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -349,37 +349,37 @@ jobs:
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           cosign sign-blob --yes \
-            --bundle "target/ai-pr-copilot-${VERSION}.jar.sigstore.json" \
-            "target/ai-pr-copilot-${VERSION}.jar"
+            --bundle "target/rebase-rescue-${VERSION}.jar.sigstore.json" \
+            "target/rebase-rescue-${VERSION}.jar"
 
       - name: Sign image by digest
         run: |
           cosign sign --yes \
-            "ghcr.io/${{ github.repository_owner }}/ai-pr-copilot@${{ needs.docker.outputs.digest }}"
+            "ghcr.io/${{ github.repository_owner }}/rebase-rescue@${{ needs.docker.outputs.digest }}"
 
       - name: Image SBOM (Syft via sbom-action)
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
-          image: ghcr.io/${{ github.repository_owner }}/ai-pr-copilot@${{ needs.docker.outputs.digest }}
+          image: ghcr.io/${{ github.repository_owner }}/rebase-rescue@${{ needs.docker.outputs.digest }}
           format: cyclonedx-json
-          output-file: target/ai-pr-copilot-${{ needs.validate.outputs.version }}-image.sbom.cyclonedx.json
+          output-file: target/rebase-rescue-${{ needs.validate.outputs.version }}-image.sbom.cyclonedx.json
 
       - name: Attest JAR provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         id: attest-jar
         with:
-          subject-path: target/ai-pr-copilot-${{ needs.validate.outputs.version }}.jar
+          subject-path: target/rebase-rescue-${{ needs.validate.outputs.version }}.jar
           push-to-registry: false
 
       - name: Stage attestation bundle
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          cp "${{ steps.attest-jar.outputs.bundle-path }}" "target/ai-pr-copilot-${VERSION}.attestation.sigstore.json"
+          cp "${{ steps.attest-jar.outputs.bundle-path }}" "target/rebase-rescue-${VERSION}.attestation.sigstore.json"
 
       - name: Attest image provenance + SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-name: ghcr.io/${{ github.repository_owner }}/ai-pr-copilot
+          subject-name: ghcr.io/${{ github.repository_owner }}/rebase-rescue
           subject-digest: ${{ needs.docker.outputs.digest }}
           push-to-registry: true
 
@@ -388,9 +388,9 @@ jobs:
         with:
           name: signed-${{ needs.validate.outputs.version }}
           path: |
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}.jar.sigstore.json
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}-image.sbom.cyclonedx.json
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}.attestation.sigstore.json
+            target/rebase-rescue-${{ needs.validate.outputs.version }}.jar.sigstore.json
+            target/rebase-rescue-${{ needs.validate.outputs.version }}-image.sbom.cyclonedx.json
+            target/rebase-rescue-${{ needs.validate.outputs.version }}.attestation.sigstore.json
           if-no-files-found: error
           retention-days: 7
 
@@ -444,19 +444,19 @@ jobs:
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           {
-            echo "## AI PR Copilot ${VERSION}"
+            echo "## RebaseRescue ${VERSION}"
             echo ""
             echo "### Verify"
             echo ""
             echo '```bash'
-            echo "sha256sum -c ai-pr-copilot-${VERSION}.jar.sha256"
-            echo "cosign verify-blob --bundle ai-pr-copilot-${VERSION}.jar.sigstore.json \\"
+            echo "sha256sum -c rebase-rescue-${VERSION}.jar.sha256"
+            echo "cosign verify-blob --bundle rebase-rescue-${VERSION}.jar.sigstore.json \\"
             echo "  --certificate-identity-regexp 'https://github.com/${{ github.repository }}' \\"
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\"
-            echo "  ai-pr-copilot-${VERSION}.jar"
+            echo "  rebase-rescue-${VERSION}.jar"
             echo '```'
             echo ""
-            echo "Container: \`ghcr.io/${{ github.repository_owner }}/ai-pr-copilot:${VERSION}\`"
+            echo "Container: \`ghcr.io/${{ github.repository_owner }}/rebase-rescue:${VERSION}\`"
             echo ""
             echo "### Changes"
             echo ""
@@ -484,15 +484,15 @@ jobs:
           body_path: release-notes.md
           fail_on_unmatched_files: false
           files: |
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}.jar
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}.jar.sha256
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}-cyclonedx-aggregate.json
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}-cyclonedx-aggregate.xml
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}-image.sbom.cyclonedx.json
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}.jar.sigstore.json
-            target/ai-pr-copilot-${{ needs.validate.outputs.version }}.attestation.sigstore.json
+            target/rebase-rescue-${{ needs.validate.outputs.version }}.jar
+            target/rebase-rescue-${{ needs.validate.outputs.version }}.jar.sha256
+            target/rebase-rescue-${{ needs.validate.outputs.version }}-cyclonedx-aggregate.json
+            target/rebase-rescue-${{ needs.validate.outputs.version }}-cyclonedx-aggregate.xml
+            target/rebase-rescue-${{ needs.validate.outputs.version }}-image.sbom.cyclonedx.json
+            target/rebase-rescue-${{ needs.validate.outputs.version }}.jar.sigstore.json
+            target/rebase-rescue-${{ needs.validate.outputs.version }}.attestation.sigstore.json
 
       - name: Release summary
         run: |
           echo "Release v${{ needs.validate.outputs.version }} published (prerelease=${{ needs.validate.outputs.prerelease }})"
-          echo "Image: ghcr.io/${{ github.repository_owner }}/ai-pr-copilot@${{ needs.docker.outputs.digest }}"
+          echo "Image: ghcr.io/${{ github.repository_owner }}/rebase-rescue@${{ needs.docker.outputs.digest }}"
