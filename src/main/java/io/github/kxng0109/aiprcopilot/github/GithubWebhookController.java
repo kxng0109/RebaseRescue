@@ -10,6 +10,7 @@ import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.concurrent.RejectedExecutionException;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.RequiredArgsConstructor;
@@ -79,7 +80,12 @@ public class GithubWebhookController {
         }
 
         String payload = new String(rawBody, StandardCharsets.UTF_8);
-        webhookService.handleAsync(trimmedDeliveryId, event, payload);
+        try {
+            webhookService.handleAsync(trimmedDeliveryId, event, payload);
+        } catch (RejectedExecutionException e) {
+            log.warn("GitHub webhook delivery {}: executor saturated, rejecting", trimmedDeliveryId);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("executor saturated");
+        }
         log.info("GitHub webhook delivery {}: accepted {} for async processing", trimmedDeliveryId, event);
         return ResponseEntity.accepted().body("accepted " + trimmedDeliveryId);
     }

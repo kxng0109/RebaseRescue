@@ -11,7 +11,9 @@ import org.springframework.stereotype.Component;
  * <p>GitHub reuses the same GUID on redelivery, and exposes no signed
  * timestamp, so this store is the sole replay defense. Entries expire
  * {@code github.webhook.dedup-ttl} after write (default 30d, covering the
- * 3-day redelivery window). Thread-safe via Caffeine's lock-free map.</p>
+ * 3-day redelivery window). Claims are strictly atomic via the cache's
+ * concurrent map view, so concurrent redeliveries of the same GUID yield
+ * exactly one winner even on virtual threads.</p>
  */
 @Component
 public class DeliveryDedupStore {
@@ -27,7 +29,7 @@ public class DeliveryDedupStore {
     }
 
     /**
-     * Attempts to claim a delivery GUID.
+     * Attempts to claim a delivery GUID atomically.
      *
      * @param deliveryId the {@code X-GitHub-Delivery} value, must not be {@code null}
      * @return {@code true} if this is the first time the GUID is seen
@@ -40,19 +42,7 @@ public class DeliveryDedupStore {
             throw new IllegalArgumentException("deliveryId must not be blank");
         }
         String key = deliveryId.trim();
-        if (cache.getIfPresent(key) != null) {
-            return false;
-        }
-        cache.put(key, Boolean.TRUE);
-        // Double-check for TOCTOU under virtual threads: if another thread
-        // raced between our getIfPresent and put, the first put wins;
-        // the second caller still returns true here erroneously for one
-        // delivery. Caffeine has no putIfAbsent that returns previous;
-        // for dedup we accept at-most-once per 30d is best-effort and
-        // the analysis is idempotent, so a rare double-process is safe.
-        // A strict alternative would be a ConcurrentHashMap, but we prefer
-        // Caffeine's TTL. Documented as best-effort dedup.
-        return true;
+        return cache.asMap().putIfAbsent(key, Boolean.TRUE) == null;
     }
 
     /**

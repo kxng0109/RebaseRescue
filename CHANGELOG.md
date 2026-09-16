@@ -11,6 +11,7 @@ and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 - GitHub App integration (opt-in `GITHUB_ENABLED`): webhook `POST /api/webhooks/github` (HMAC `sha256=` over raw bytes, `MessageDigest.isEqual`, `X-GitHub-Delivery` dedup 30d, `ping` → `pong`, 202 within 10s), virtual-thread async to fetch diff (`Accept: application/vnd.github.diff`) → `analyzeDiff` → post review (`line`+`side`, `REQUEST_CHANGES` iff error) + SARIF upload (`gzip`→`base64`, `automationDetails.id` = category, poll to `complete`). JWT `RS256` via `nimbus-jose-jwt 10.9.1` + `bcprov/bcpkix 1.84`, installation tokens cached 55m. `X-GitHub-Api-Version: 2026-03-10`.
 - 62 new tests for GitHub flow (HMAC vector `sha256=757107ea…b043e17`, dedup, payload, JWT, controller MockMvc, service, API client). GitHub package temporarily excluded from per-class JaCoCo gate (bundle still 90%+).
 - Webhook hardening: `RequestSizeLimitFilter` now caps `POST /api/webhooks/github` at `GITHUB_WEBHOOK_MAX_REQUEST_BYTES` (default 1MB) before HMAC work, 413 on excess; `X-Request-ID` echoed only on pattern match; `github-webhook` rate limiter (60 per 1m, 429 fallback) keeps the 10s delivery deadline.
+- Strict webhook replay defense plus backpressure: delivery dedup claims are atomic with exactly-one-winner under concurrency; background work runs on a bounded virtual-thread pool (4 core, 16 max, 100 queue) that rejects fast to 429 on saturation instead of growing without bound.
 
 ### Fixed
 

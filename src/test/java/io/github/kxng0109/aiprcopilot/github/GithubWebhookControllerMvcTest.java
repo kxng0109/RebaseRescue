@@ -3,6 +3,7 @@ package io.github.kxng0109.aiprcopilot.github;
 import io.github.kxng0109.aiprcopilot.config.GithubProperties;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
+import java.util.concurrent.RejectedExecutionException;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -134,5 +136,23 @@ class GithubWebhookControllerMvcTest {
                         .content(body))
                 .andExpect(status().isAccepted());
         verify(webhookService).handleAsync(eq("delivery-ok"), eq("pull_request"), anyString());
+    }
+
+    @Test
+    void handle_shouldReturn429WhenExecutorSaturated() throws Exception {
+        String body = """
+                {"action":"opened","pull_request":{"number":1,"head":{"sha":"abc"},"base":{"ref":"main"}},"repository":{"name":"r","full_name":"o/r","owner":{"login":"o"}}}
+                """;
+        String sig = hmac("test-secret-123", body);
+        when(dedupStore.tryClaim("delivery-busy")).thenReturn(true);
+        doThrow(new RejectedExecutionException("saturated"))
+                .when(webhookService).handleAsync(eq("delivery-busy"), eq("pull_request"), anyString());
+        mockMvc.perform(post("/api/webhooks/github")
+                        .header("X-GitHub-Delivery", "delivery-busy")
+                        .header("X-Hub-Signature-256", sig)
+                        .header("X-GitHub-Event", "pull_request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isTooManyRequests());
     }
 }
