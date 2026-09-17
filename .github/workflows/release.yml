@@ -100,7 +100,7 @@ jobs:
         run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Restore Trivy DB cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ github.workspace }}/.cache/trivy
           key: cache-trivy-${{ steps.date.outputs.date }}
@@ -252,7 +252,7 @@ jobs:
         run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Restore Trivy DB cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ github.workspace }}/.cache/trivy
           key: cache-trivy-${{ steps.date.outputs.date }}
@@ -435,7 +435,7 @@ jobs:
 
       - name: Generate conventional changelog
         id: cliff
-        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4
+        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
         with:
           config: cliff.toml
           args: ${{ steps.cliff-range.outputs.args }}
