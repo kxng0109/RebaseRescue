@@ -10,7 +10,7 @@ management:
 
 info:
   project:
-    name: AI PR Copilot
+    name: RebaseRescue
     description: "Self-hosted AI-powered code audit and PR analysis service with multi-provider support"
     version: "@project.version@"
 
@@ -43,6 +43,9 @@ prcopilot:
     max-touched-files: ${PRCOPILOT_ANALYSIS_MAX_TOUCHED_FILES:500}
     # Diff-hash response cache (0 = disabled)
     cache-max-size: ${PRCOPILOT_CACHE_DIFF_MAX_SIZE:1000}
+    # Per-entry cache admission budget in characters: oversized responses are
+    # served but not stored, bounding worst-case heap (entries times budget)
+    cache-max-entry-chars: ${PRCOPILOT_CACHE_DIFF_MAX_ENTRY_CHARS:100000}
     cache-ttl: ${PRCOPILOT_CACHE_DIFF_TTL:30m}
     # Minimum severity to include in responses/SARIF (note|warning|error)
     min-level: ${PRCOPILOT_GATE_MIN_LEVEL:note}
@@ -82,9 +85,36 @@ prcopilot:
   sarif:
     # SARIF consumer this output targets: github (Code Scanning) or sonar
     consumer: ${PRCOPILOT_SARIF_CONSUMER:github}
-    category: ${PRCOPILOT_SARIF_CATEGORY:ai-pr-copilot}
+    category: ${PRCOPILOT_SARIF_CATEGORY:rebase-rescue}
     # Path to repo-local false-positive suppress file (empty = no suppression)
     suppress-file: ${PRCOPILOT_SUPPRESS_FILE:.ai-review-ignore.yml}
+    # Maximum serialized SARIF bytes accepted for upload (GitHub caps at 10MB gzipped)
+    max-bytes: ${PRCOPILOT_SARIF_MAX_BYTES:5000000}
+
+github:
+  enabled: ${GITHUB_ENABLED:false}
+  app:
+    app-id: ${GITHUB_APP_ID:}
+    client-id: ${GITHUB_APP_CLIENT_ID:}
+    private-key: ${GITHUB_APP_PRIVATE_KEY:}
+    installation-id: ${GITHUB_APP_INSTALLATION_ID:}
+  webhook:
+    secret: ${GITHUB_WEBHOOK_SECRET:}
+    dedup-ttl: ${GITHUB_WEBHOOK_DEDUP_TTL:30d}
+    dedup-max-size: ${GITHUB_WEBHOOK_DEDUP_MAX_SIZE:100000}
+    # Hard byte ceiling on webhook JSON bodies, enforced before HMAC work (min 1024).
+    # Deliveries are metadata only; diff is fetched separately, so 1MB is generous.
+    max-request-bytes: ${GITHUB_WEBHOOK_MAX_REQUEST_BYTES:1048576}
+  api:
+    base-url: ${GITHUB_API_BASE_URL:https://api.github.com}
+    # Explicit SSRF allowlist for the API host (comma-separated or YAML list,
+    # whole-list replace). Add an Enterprise Server FQDN to opt in.
+    allowed-hosts: ${GITHUB_API_ALLOWED_HOSTS:api.github.com}
+    api-version: ${GITHUB_API_VERSION:2026-03-10}
+    token-cache-ttl: ${GITHUB_TOKEN_CACHE_TTL:55m}
+    token-cache-max-size: ${GITHUB_TOKEN_CACHE_MAX_SIZE:100}
+  sarif:
+    category: ${GITHUB_SARIF_CATEGORY:rebase-rescue}
 
 spring:
   threads:
@@ -123,7 +153,7 @@ spring:
         model: ${OLLAMA_MODEL:qwen3:4b}
 
   application:
-    name: ai-pr-copilot
+    name: rebase-rescue
     version: "@project.version@"
 
   security:
@@ -155,8 +185,12 @@ resilience4j:
         limitForPeriod: ${PRCOPILOT_RATELIMITER_LIMIT_FOR_PERIOD:30}
         limitRefreshPeriod: ${PRCOPILOT_RATELIMITER_REFRESH_PERIOD:1m}
         timeoutDuration: ${PRCOPILOT_RATELIMITER_TIMEOUT_MILLIS:0}ms
+      github-webhook:
+        limitForPeriod: ${GITHUB_WEBHOOK_RATELIMITER_LIMIT_FOR_PERIOD:60}
+        limitRefreshPeriod: ${GITHUB_WEBHOOK_RATELIMITER_REFRESH_PERIOD:1m}
+        timeoutDuration: ${GITHUB_WEBHOOK_RATELIMITER_TIMEOUT_MILLIS:0}ms
 
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:info}
-    io.github.kxng0109.aiprcopilot: ${LOG_LEVEL_KXNG:info}
+    io.github.kxng0109.rebaserescue: ${LOG_LEVEL_KXNG:info}

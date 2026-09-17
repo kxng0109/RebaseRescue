@@ -1,31 +1,8 @@
 # Trivy ignore list for accepted residual vulnerabilities.
 #
-# These are NOT false positives and are NOT silently tolerated. Each is
-# an upstream vulnerability in the Temurin 25.0.4_7 base image for which
-# NO newer patch exists as of 2026-09-10 (the latest Temurin 25 tag is
-# 25.0.4_7; 25.0.4_8 and Temurin 26 do not exist yet). They are accepted
-# here with compensating controls and a re-evaluation trigger.
-#
-# Re-check before any release:
-#   curl -s https://registry.hub.docker.com/v2/repositories/library/eclipse-temurin/tags?name=25.0.4
-# When 25.0.4_8+ ships, delete this file and re-run the pipeline.
-
-# --- Alpine 3.24.1 OS libraries ---------------------------------------------
-
-# CVE-2026-14456  OpenSSL: unbounded memory growth in QUIC server (DoS)
-#   Affected: libcrypto3/libssl3 3.5.7-r0   Fixed: 3.5.8-r0
-#   Compensating controls: no QUIC server is exposed; Tomcat serves HTTP/1.1
-#   only, so the QUIC attack surface is not reachable in this deployment.
-CVE-2026-14456
-
-# CVE-2026-76956  libexpat: hash-flooding DoS via crafted XML
-#   Affected: libexpat 2.8.3-r0   Fixed: 2.8.4-r0
-#   Compensating controls: input is GitHub diff text, never untrusted XML;
-#   Spring's XML parser is not on the request path.
-CVE-2026-76956
-
-# CVE-2026-76957  libexpat: memory corruption / RCE via crafted XML
-#   Affected: libexpat 2.8.3-r0   Fixed: 2.8.4-r0
-#   Compensating controls: same as CVE-2026-76956 — no XML parsing of
-#   untrusted input; prompt-injection guardrails cap payload size.
-CVE-2026-76957
+# Currently empty by intent: the Dockerfile upgrades Alpine packages at build
+# time, so the previously accepted libexpat and OpenSSL findings (fixed in
+# expat 2.8.4-r0 and openssl 3.5.8-r0) no longer occur. Re-add entries here
+# ONLY with a CVE comment, affected/fixed versions, compensating controls,
+# and a re-evaluation trigger. Never add an entry to make a gate pass
+# without all four.

@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.0.0] - 2026-09-16
+
+### Changed (breaking)
+
+- Renamed AI PR Copilot to RebaseRescue across artifact coordinates (`rebase-rescue`), Java packages, CLI identity, container image, SARIF category defaults, and metrics. `PRCOPILOT_*` env and `prcopilot.*` property prefixes are unchanged. History below keeps the old name.
+
+## [1.2.1] - 2026-09-16
+
+### Fixed
+
+- Release image: upgrade Alpine packages at build time (`apk upgrade`), pulling expat `2.8.4-r0`, musl `1.2.6-r2`, and openssl `3.5.8-r0`, which clears the libexpat `CVE-2026-66046` image-gate finding plus the three previously accepted OS findings; `.trivyignore` returns to intentionally empty.
+
+## [1.2.0] - 2026-09-16
+
+### Added
+
+- GitHub App integration (opt-in `GITHUB_ENABLED`): webhook `POST /api/webhooks/github` (HMAC `sha256=` over raw bytes, `MessageDigest.isEqual`, `X-GitHub-Delivery` dedup 30d, `ping` → `pong`, 202 within 10s), virtual-thread async to fetch diff (`Accept: application/vnd.github.diff`) → `analyzeDiff` → post review (`line`+`side`, `REQUEST_CHANGES` iff error) + SARIF upload (`gzip`→`base64`, `automationDetails.id` = category, poll to `complete`). JWT `RS256` via `nimbus-jose-jwt 10.9.1` + `bcprov/bcpkix 1.86`, installation tokens cached 55m. `X-GitHub-Api-Version: 2026-03-10`.
+- ~150 new tests for GitHub flow plus hardening (HMAC vector `sha256=757107ea…b043e17`, dedup, payload, JWT, controller MockMvc, service, API client, coverage closure); 536 total, per-class gates green with no exclusions beyond bootstrap.
+- Webhook hardening: `RequestSizeLimitFilter` now caps `POST /api/webhooks/github` at `GITHUB_WEBHOOK_MAX_REQUEST_BYTES` (default 1MB) before HMAC work, 413 on excess; `X-Request-ID` echoed only on pattern match; `github-webhook` rate limiter (60 per 1m, 429 fallback) keeps the 10s delivery deadline.
+- Strict webhook replay defense plus backpressure: delivery dedup claims are atomic with exactly-one-winner under concurrency; background work runs on a bounded virtual-thread pool (4 core, 16 max, 100 queue) that rejects fast to 429 on saturation instead of growing without bound.
+
+### Fixed
+
+- `RequestSizeLimitFilter` 413 body no longer reflects arbitrary `X-Request-ID` values (response-injection surface).
+- Error-body hygiene: 500 plus 422 plus malformed-JSON plus 5xx upstream responses no longer echo exception text (model output, DNS names, connection details); details go to the server log with the correlation ID and clients receive generic messages. SSE `error` events follow the same split.
+- Fail-closed GitHub startup: enabling the integration without a webhook secret or with a non-allowlisted API base URL now aborts startup instead of failing per request; API base URL is allowlisted (default `api.github.com`, loopback plus metadata plus credentials plus non-https always rejected) with explicit Enterprise Server opt-in via `GITHUB_API_ALLOWED_HOSTS`.
+- Removed dead null-mode fallback in `SecurityConfig`; a null auth mode now fails fast instead of silently downgrading to selfhost.
+- Token plus dependency resilience: BouncyCastle `1.84` to `1.86` (August-September 2026 CVE batch), RSA private keys floored at 2048 bits, installation token evicted plus refreshed with exactly one retry on API 401s, and a single shared `RestClient` per bean instead of a rebuild per call.
+- Memory bounds plus honest gates: diff-cache responses over a configurable character budget are served but not stored, SARIF uploads enforce a byte budget before polling, SARIF polling survives transient failures with interrupt discipline intact, and the temporary GitHub JaCoCo exclusion is removed with per-class gates green again.
+- Quiet-by-construction toolchain: Maven wrapper `3.9.11` to `3.9.16` (drops the Guice plus Sisu JDK warnings at the root) and static Mockito agent attach for surefire (drops the self-attach plus dynamic-load warnings); the remaining CDS bootstrap note has no upstream fix and stays as harmless noise.
+
 ## [1.1.0] - 2026-09-10
 
 ### Added

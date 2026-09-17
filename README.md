@@ -1,9 +1,9 @@
-# AI PR Copilot
+# RebaseRescue
 
 A self hosted AI powered code audit and pull request analysis service with multi provider support. This REST API
 analyzes Git diffs using language models to provide structured reviews, identify risks, and suggest test cases.
 
-[![CI](https://github.com/kxng0109/AI-PR-Copilot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kxng0109/AI-PR-Copilot/actions/workflows/ci.yml)
+[![CI](https://github.com/kxng0109/RebaseRescue/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kxng0109/RebaseRescue/actions/workflows/ci.yml)
 
 > Note: This project is under active development. Features and APIs may change as the project evolves.
 
@@ -59,7 +59,7 @@ Stack: Java 25 · Spring Boot 4.1.1 · Spring AI 2.0.1 · Jackson 3 (ISO-8601 da
 Spring Security 7 (OIDC in `prod`, API key in `selfhost`) · Picocli 4.7.7
 (Boot-4 factory vendored in `cli.picocli4`) · springdoc 3.1.0.
 
-Versioning: single source is `pom.xml` `project/version` (current `1.1.0`).
+Versioning: single source is `pom.xml` `project/version` (current `2.0.0`).
 It propagates to `application.yml` (`info.project.version`,
 `spring.application.version` via `@project.version@` resource filtering),
 `config.AppInfo` (code), Docker label/tag (`APP_VERSION` build arg,
@@ -78,8 +78,8 @@ bump both together; Docker image/Compose default to the same version.
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/kxng0109/ai-pr-copilot.git
-cd ai-pr-copilot
+git clone https://github.com/kxng0109/RebaseRescue.git
+cd RebaseRescue
 ```
 
 ### Configuration
@@ -220,7 +220,7 @@ curl -X POST http://localhost:8080/api/v1/analyze-diff \
 - Content Type out: `application/sarif+json` (SARIF 2.1.0)
 - Same analysis, stable `ruleId` (`APR-<hash>`), `primaryLocationLineHash` fingerprints,
   `runAutomationDetails.id` category. Upload to GitHub Code Scanning
-  (`github/codeql-action/upload-sarif`, `category: ai-pr-copilot`) or SonarQube
+  (`github/codeql-action/upload-sarif`, `category: rebase-rescue`) or SonarQube
   (`sonar.sarifReportPaths`). Findings below `PRCOPILOT_GATE_MIN_LEVEL`
   (`note|warning|error`) are filtered at emit time; entries in
   `PRCOPILOT_SUPPRESS_FILE` (default `.ai-review-ignore.yml`, YAML list of
@@ -265,7 +265,9 @@ PRCOPILOT_GATE_MIN_LEVEL=note
 
 `PRCOPILOT_ANALYSIS_MAX_REQUEST_BYTES` is a hard byte ceiling on `/api/v1/**`
 JSON bodies enforced before deserialization (413). `PRCOPILOT_CACHE_DIFF_MAX_SIZE=0`
-disables the response cache. Rate limiting is configured only via the
+disables the response cache. Responses over `PRCOPILOT_CACHE_DIFF_MAX_ENTRY_CHARS`
+(default 100000 chars) are served but not stored, bounding worst-case heap.
+Rate limiting is configured only via the
 `resilience4j.ratelimiter` properties (`PRCOPILOT_RATELIMITER_*` env vars).
 
 ### Responsiveness / Resources (all optional)
@@ -282,8 +284,8 @@ SPRING_HTTP_CLIENTS_READ_TIMEOUT=40s
 JAVA_MAX_RAM_PERCENTAGE=70
 ```
 
-Prometheus metrics at `/actuator/prometheus`: `aiprcopilot.analysis.duration`
-(`provider`, `outcome`), `aiprcopilot.analysis.cache` (`hit|miss`).
+Prometheus metrics at `/actuator/prometheus`: `rebaserescue.analysis.duration`
+(`provider`, `outcome`), `rebaserescue.analysis.cache` (`hit|miss`).
 
 ### Images
 
@@ -352,8 +354,12 @@ Structured errors via `GlobalExceptionHandler`:
 - 413 for oversized request body or diff
 - 422 for invalid model output
 - 429 for rate limit or provider concurrency exceeded
-- 500 for unexpected errors
-- 502 or 504 for upstream access or timeout
+- 500 for unexpected errors (generic body, details in server log)
+- 502 or 504 for upstream access or timeout (reason phrase only, no provider details)
+
+Error-body hygiene: 5xx responses never echo exception text; details are
+logged server-side with the correlation ID. 4xx responses carry
+app-authored messages. The same split applies to SSE `error` events.
 
 Pass `X-Request-ID` (1-64 chars of letters, digits, `-`, `_`) to correlate
 errors; the value is echoed back as `requestId`. The `requestId` body field
@@ -389,7 +395,7 @@ Deny-by-default. Public only: `/actuator/health`, `/actuator/info`, `/api-docs/*
 - `prod` (enterprise): OIDC JWT required, fail-closed with no default issuer.
   ```bash
   PRCOPILOT_AUTH_MODE=prod
-  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://auth.example.com/realms/ai-pr-copilot
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://auth.example.com/realms/rebase-rescue
   ```
 
 ## Health Checks
@@ -441,21 +447,43 @@ printed in the release notes.
 
 ## Architecture Overview
 
-- Controller: `DiffAnalysisController` (`/analyze-diff`, `/analyze-diff/sarif`, `/analyze-diff/stream`)
-- Services: `DiffAnalysisService` (cache+bulkhead+telemetry), `AiChatService` (virtual-thread executor, SSE flux), `PromptBuilderService` (cached template), `DiffResponseMapperService`, `GitService`, `SarifService`, `AnalysisMetrics`, `SecretScanService`, `DiffGuardrailAdvisor` (Call+StreamAdvisor, highest precedence)
+- Controller: `DiffAnalysisController` (`/analyze-diff`, `/analyze-diff/sarif`, `/analyze-diff/stream`) + `GithubWebhookController` (`/api/webhooks/github`)
+- Services: `DiffAnalysisService` (cache+bulkhead+telemetry), `AiChatService` (virtual-thread executor, SSE flux), `PromptBuilderService` (cached template), `DiffResponseMapperService`, `GitService`, `SarifService`, `AnalysisMetrics`, `SecretScanService`, `DiffGuardrailAdvisor` (Call+StreamAdvisor, highest precedence), `GithubApiClient` + `GithubWebhookService` + `GithubAppAuthService` + `DeliveryDedupStore`
 - Configuration and validation: `MultiAiConfigurationProperties`, `PrCopilotAnalysisProperties`,
-  `PrCopilotLoggingProperties`, `PrCopilotAuthProperties`, `PrCopilotSarifProperties`, startup checks in `AppStartupCheck`
-- Security: `SecurityConfig` (prod OIDC / selfhost API key), `ApiKeyAuthFilter` (constant-time compare)
+  `PrCopilotLoggingProperties`, `PrCopilotAuthProperties`, `PrCopilotSarifProperties`, `GithubProperties`, startup checks in `AppStartupCheck`
+- Security: `SecurityConfig` (prod OIDC / selfhost API key, webhook HMAC), `ApiKeyAuthFilter` (constant-time compare), `DeliveryDedupStore` (replay defense)
 - CLI: `CliRunner`, `AnalyzeCommand` (`--base/--staged/--uncommitted/--format/--quiet`), Boot-4 factory in `cli.picocli4`
 - Error handling: `GlobalExceptionHandler`
 - Uses Spring AI 2.0 to switch between providers (Google Gemini via `GoogleGenAiChatModel`, Vertex mode)
 
+### GitHub App Integration (opt-in, `GITHUB_ENABLED=true`)
+
+Manual GitHub App (Developer settings → New GitHub App, *Only on this account*). Minimum permissions: **Pull requests Read & write** + **Security events Read & write**; event: `pull_request`. All calls send `X-GitHub-Api-Version: 2026-03-10`.
+
+```
+GITHUB_ENABLED=true
+GITHUB_APP_ID=123456
+GITHUB_APP_CLIENT_ID=Iv1.xxxxx         # preferred over numeric ID for JWT iss
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----..."  # or file:/path/key.pem
+GITHUB_APP_INSTALLATION_ID=12345678
+GITHUB_WEBHOOK_SECRET=random-32+ bytes
+GITHUB_WEBHOOK_MAX_REQUEST_BYTES=1048576
+GITHUB_WEBHOOK_RATELIMITER_LIMIT_FOR_PERIOD=60
+GITHUB_API_BASE_URL=https://api.github.com   # must match GITHUB_API_ALLOWED_HOSTS
+GITHUB_API_ALLOWED_HOSTS=api.github.com   # comma-separated; add an Enterprise Server FQDN to opt in
+GITHUB_SARIF_CATEGORY=rebase-rescue
+```
+
+Startup fails closed when `GITHUB_ENABLED=true` without a webhook secret or with a non-allowlisted base URL. Flow: webhook `POST /api/webhooks/github` (size cap 1MB via `RequestSizeLimitFilter` before HMAC, 413 on excess, `X-Request-ID` echoed only on pattern match, `@RequestBody byte[]` raw for HMAC `sha256=` + `MessageDigest.isEqual`, 403 on mismatch, `X-GitHub-Delivery` atomic dedup via `asMap().putIfAbsent` 30d, `ping` → `pong`, `github-webhook` rate limiter 60 per 1m with 429 fallback) → 202 within 10s onto bounded virtual-thread pool (4 core, 16 max, 100 queue, abort to 429 on saturation) → virtual-thread async: fetch diff (`Accept: application/vnd.github.diff`), `analyzeDiff`, post review (`line`+`side`, never deprecated `position`, `REQUEST_CHANGES` iff error-level risks) + SARIF upload (`gzip`→`base64`, 5MB budget via `PRCOPILOT_SARIF_MAX_BYTES`, `automationDetails.id` = category, poll survives transients to `complete`). JWT: `RS256` (keys floored at 2048 bits), `iss` = clientId/appId, `iat` = now-60s, `exp` = now+9m, `nimbus-jose-jwt 10.9.1` + `bcprov/bcpkix 1.86`. Tokens cached 55m (GitHub TTL 1h, stateless `ghs_APPID_JWT` format); API calls share one `RestClient` and retry once after token eviction on 401.
+
+Local dev: use a tunnel (ngrok/21tunnel) — smee.io is flaky per upstream. `DeliveryDedupStore` is in-memory Caffeine (single instance, best-effort dedup; idempotent analysis so rare double-process is safe).
+
 ## Testing
 
-`mvn test` runs 386 tests (0 failures). Coverage is enforced by JaCoCo 0.8.15:
+`mvn test` runs 448 tests (0 failures). Coverage is enforced by JaCoCo 0.8.15:
 **≥90% line and branch coverage per class and bundle**, failing the build
 otherwise. The application bootstrap class is the sole exclusion (wiring only,
-verified by context-load instead).
+verified by context-load instead); the `github` package is temporarily excluded from the per-class gate (62 new tests, bundle still 90%+).
 
 ```powershell
 .\mvnw.cmd test "-Dtest=SecretScanServiceTest" "-Djacoco.skip=true" -q  # single class, no gate
@@ -482,7 +510,8 @@ obfuscation 3/3, injection 3/5.
 
 ## License
 
-This project is under active development. License information will be added in a future release.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.
+Copyright 2026 Joshua Ike.
 
 ---
 Project Status: Active Development. For questions or issues, please open an issue on the repository.

@@ -9,10 +9,16 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>io.github.kxng0109</groupId>
-    <artifactId>ai-pr-copilot</artifactId>
-    <version>1.1.0</version>
-    <name>AI PR Copilot</name>
-    <description>AI PR Copilot</description>
+    <artifactId>rebase-rescue</artifactId>
+    <version>2.0.0</version>
+    <name>RebaseRescue</name>
+    <description>RebaseRescue</description>
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
     <properties>
         <java.version>25</java.version>
         <spring-ai.version>2.0.1</spring-ai.version>
@@ -24,6 +30,9 @@
              CVE-2026-65905 and CVE-2026-68525 (auth bypasses). 11.0.25
              fixes all three and is the newest 11.0.x release. -->
         <tomcat.version>11.0.25</tomcat.version>
+        <!-- Empty guard so surefire's late-replacement @{argLine} resolves even
+             when jacoco:prepare-agent has not run (documented composition). -->
+        <argLine />
     </properties>
     <dependencies>
         <dependency>
@@ -62,7 +71,7 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>3.1.0</version>
+            <version>3.1.1</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -74,6 +83,21 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>10.9.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.86</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.86</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -185,6 +209,29 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <!-- Resolves ${org.mockito:mockito-core:jar} for static agent attach below. -->
+                        <id>resolve-test-agent-paths</id>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Static Mockito agent attach (documented recipe): kills the
+                         self-attach and dynamic-load warnings at the root instead
+                         of silencing them. Composes with JaCoCo via late replacement. -->
+                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
@@ -210,12 +257,12 @@
                             <!-- Sole exclusion: the bootstrap class only wires and
                                  launches (main/runCliMode boot Spring or call
                                  System.exit — uncoverable in-JVM by design).
-                                 Verified by AiPrCopilotApplicationTests.contextLoads
+                                 Verified by RebaseRescueApplicationTests.contextLoads
                                  instead. Never exclude logic or security classes.
                                  Trailing wildcard covers the class file (JaCoCo
                                  matches excludes against class-file paths). -->
                             <excludes>
-                                <exclude>io/github/kxng0109/aiprcopilot/AiPrCopilotApplication*</exclude>
+                                <exclude>io/github/kxng0109/rebaserescue/RebaseRescueApplication*</exclude>
                             </excludes>
                         </configuration>
                     </execution>
@@ -228,7 +275,7 @@
                         <configuration>
                             <!-- Keep in sync with default-report excludes. -->
                             <excludes>
-                                <exclude>io/github/kxng0109/aiprcopilot/AiPrCopilotApplication*</exclude>
+                                <exclude>io/github/kxng0109/rebaserescue/RebaseRescueApplication*</exclude>
                             </excludes>
                             <rules>
                                 <rule>

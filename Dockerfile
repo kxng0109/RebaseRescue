@@ -25,12 +25,12 @@ RUN ./mvnw clean package -DskipTests -B
 # Set AOTCACHE_ENABLED=0 at build to skip. Same OS/arch/classpath required at runtime.
 ARG AOTCACHE_ENABLED=1
 RUN if [ "$AOTCACHE_ENABLED" = "1" ]; then \
-      java -XX:AOTCacheOutput=app.aot -Dspring.context.exit=onRefresh -jar target/ai-pr-copilot-*.jar \
+      java -XX:AOTCacheOutput=app.aot -Dspring.context.exit=onRefresh -jar target/rebase-rescue-*.jar \
         || { echo "AOT cache training skipped (non-fatal)"; touch app.aot; }; \
     else touch app.aot; fi
 
 # Extract Spring Boot layers (Boot 4.1: jarmode=tools replaces removed layertools)
-RUN java -Djarmode=tools -jar target/ai-pr-copilot-*.jar extract --layers --destination extracted
+RUN java -Djarmode=tools -jar target/rebase-rescue-*.jar extract --layers --destination extracted
 
 # ============================================
 # Runtime Stage
@@ -39,17 +39,21 @@ RUN java -Djarmode=tools -jar target/ai-pr-copilot-*.jar extract --layers --dest
 # why the old 25.0.4_1 tag was removed and 25.0.4_7 is current).
 FROM eclipse-temurin@sha256:3137541deb3cac6626b5d9a4a2187bc0d6a34312f858bd2c67dd01e732e6b682
 
-LABEL org.opencontainers.image.title="AI PR Copilot"
+LABEL org.opencontainers.image.title="RebaseRescue"
 LABEL org.opencontainers.image.description="Self-hosted AI-powered code audit and PR analysis service"
 LABEL org.opencontainers.image.vendor="kxng0109"
 ARG APP_VERSION=1.1.0
 LABEL org.opencontainers.image.version="${APP_VERSION}"
-LABEL org.opencontainers.image.source="https://github.com/kxng0109/ai-pr-copilot"
+LABEL org.opencontainers.image.source="https://github.com/kxng0109/RebaseRescue"
 
 WORKDIR /app
 
-# Install required packages for health checks
-RUN apk add --no-cache wget
+# Install required packages for health checks. Upgrade first: the digest-pinned
+# base carries stale Alpine packages (expat, musl, openssl) with fixed CVEs
+# available upstream. Upgrading at build time is intentional (security over
+# bit-reproducibility); the base digest pin stays for provenance.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache wget
 
 # Create non-root user for security
 RUN addgroup -S appgroup && \
