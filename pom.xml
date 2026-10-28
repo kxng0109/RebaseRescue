@@ -21,7 +21,7 @@
     </licenses>
     <properties>
         <java.version>25</java.version>
-        <spring-ai.version>2.0.1</spring-ai.version>
+        <spring-ai.version>2.0.2</spring-ai.version>
         <!-- JaCoCo 0.8.15 (2026-06-04): latest release supporting Java 25
              class files (official since 0.8.14). No known CVEs. -->
         <jacoco.version>0.8.15</jacoco.version>
